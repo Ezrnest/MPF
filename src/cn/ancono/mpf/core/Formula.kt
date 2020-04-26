@@ -8,7 +8,11 @@ package cn.ancono.mpf.core
 /**
  * Describes the variable in a logic formula.
  */
-data class Variable(val name: String)
+data class Variable(val name: String) {
+//    override fun toString(): String {
+//        return name
+//    }
+}
 
 
 /**
@@ -43,7 +47,18 @@ sealed class Formula : Node<Formula> {
     /**
      * Flatten this formula so that all the combined nodes do not contain a children of the same type.
      */
-    abstract fun flatten() : Formula
+    abstract fun flatten(): Formula
+
+    /**
+     * The priority of the formula, 0 is the top.
+     */
+    protected abstract val bracketLevel: Int
+
+    internal fun wrapBracket(f: Formula): String = if (f.bracketLevel >= this.bracketLevel) {
+        "($f)"
+    } else {
+        f.toString()
+    }
 }
 
 sealed class AtomicFormula : Formula(), AtomicNode<Formula> {
@@ -61,6 +76,9 @@ sealed class AtomicFormula : Formula(), AtomicNode<Formula> {
     override fun flatten(): Formula {
         return this
     }
+
+    override val bracketLevel: Int
+        get() = 0
 }
 
 /**
@@ -81,13 +99,17 @@ class PredicateFormula(val p: Predicate, val terms: List<Term>) : AtomicFormula(
         return true
     }
 
+    override fun toString(): String {
+        return p.name.displayName + terms.joinToString(",", prefix = "(", postfix = ")")
+    }
 }
 
 /**
  * Describes a formula with only a name and variables. This kind of formula is usually
  * an abbreviation of a complex formula. This formula is treated as atomic formula.
  */
-class NamedFormula(val name: QualifiedName, override val variables: Set<Variable> = emptySet()) : AtomicFormula() {
+class NamedFormula(val name: QualifiedName, val parameters: List<Variable> = emptyList()) : AtomicFormula() {
+    override val variables: Set<Variable> = parameters.toSet()
     override val allVariables: Set<Variable>
         get() = variables
 
@@ -95,7 +117,14 @@ class NamedFormula(val name: QualifiedName, override val variables: Set<Variable
         if (other !is NamedFormula) {
             return false
         }
-        return name == other.name
+        return name == other.name && parameters == other.parameters
+    }
+
+    override fun toString(): String {
+        if (parameters.isEmpty()) {
+            return name.displayName
+        }
+        return name.displayName + parameters.joinToString(",", prefix = "(", postfix = ")") { it.name }
     }
 }
 
@@ -118,7 +147,7 @@ sealed class CombinedFormula(override val children: List<Formula>) : Formula(), 
     abstract override fun copyOf(newChildren: List<Formula>): CombinedFormula
 
     override fun recurMapMulti(f: (Formula) -> List<Formula>): List<Formula> {
-        val possibleChildren = children.map { recurMapMulti(f) }
+        val possibleChildren = children.map { it.recurMapMulti(f) }
         val result = ArrayList<Formula>(possibleChildren.sumBy { it.size })
         for (i in possibleChildren.indices) {
             for (c in possibleChildren[i]) {
@@ -136,7 +165,6 @@ sealed class CombinedFormula(override val children: List<Formula>) : Formula(), 
     }
 
 
-
 }
 
 
@@ -147,6 +175,7 @@ sealed class UnaryFormula(child: Formula) : CombinedFormula(listOf(child)) {
     override fun flatten(): Formula {
         return copyOf(children.map(Formula::flatten))
     }
+
 }
 
 sealed class BinaryFormula(child1: Formula, child2: Formula) : CombinedFormula(listOf(child1, child2)) {
@@ -159,6 +188,9 @@ sealed class BinaryFormula(child1: Formula, child2: Formula) : CombinedFormula(l
     override fun flatten(): Formula {
         return copyOf(children.map(Formula::flatten))
     }
+
+    override val bracketLevel: Int
+        get() = 10
 }
 
 sealed class QualifiedFormula(child: Formula, val v: Variable) :
@@ -173,36 +205,51 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
                 super.isIdentityTo(other) &&
                 v == other.v
     }
+
+    override val bracketLevel: Int
+        get() = 20
 }
 
 class NotFormula(child: Formula) : UnaryFormula(child) {
     override fun copyOf(newChildren: List<Formula>): CombinedFormula {
         return NotFormula(newChildren[0])
     }
+
+    override val bracketLevel: Int
+        get() = 5
+
+    override fun toString(): String = "¬${wrapBracket(child)}"
 }
 
 sealed class MultiFormula(children: List<Formula>) : CombinedFormula(children) {
     override fun flatten(): Formula {
-        return if(childCount <= 1){
+        return if (childCount <= 1) {
             children.first().flatten()
-        }else{
+        } else {
             val newChildren = ArrayList<Formula>(childCount)
             for (c in children) {
                 val nc = c.flatten()
                 if (nc is MultiFormula && nc::class == this::class) {
                     newChildren.addAll(nc.children)
-                }else{
+                } else {
                     newChildren.add(nc)
                 }
             }
             copyOf(newChildren)
         }
     }
+
+    override val bracketLevel: Int
+        get() = 15
 }
 
 class AndFormula(children: List<Formula>) : MultiFormula(children) {
     override fun copyOf(newChildren: List<Formula>): CombinedFormula {
         return AndFormula(newChildren)
+    }
+
+    override fun toString(): String {
+        return children.joinToString(separator = "∧") { wrapBracket(it) }
     }
 }
 
@@ -210,11 +257,19 @@ class OrFormula(children: List<Formula>) : MultiFormula(children) {
     override fun copyOf(newChildren: List<Formula>): CombinedFormula {
         return OrFormula(newChildren)
     }
+
+    override fun toString(): String {
+        return children.joinToString(separator = "∨") { wrapBracket(it) }
+    }
 }
 
 class ForAnyFormula(child: Formula, v: Variable) : QualifiedFormula(child, v) {
     override fun copyOf(newChildren: List<Formula>): CombinedFormula {
         return ForAnyFormula(newChildren[0], v)
+    }
+
+    override fun toString(): String {
+        return "∀${v.name} ${wrapBracket(child)}"
     }
 }
 
@@ -222,17 +277,29 @@ class ExistFormula(child: Formula, v: Variable) : QualifiedFormula(child, v) {
     override fun copyOf(newChildren: List<Formula>): CombinedFormula {
         return ExistFormula(newChildren[0], v)
     }
+
+    override fun toString(): String {
+        return "∃${v.name} ${wrapBracket(child)}"
+    }
 }
 
 class ImplyFormula(child1: Formula, child2: Formula) : BinaryFormula(child1, child2) {
     override fun copyOf(newChildren: List<Formula>): CombinedFormula {
         return ImplyFormula(newChildren[0], newChildren[1])
     }
+
+    override fun toString(): String {
+        return "${wrapBracket(child1)} → ${wrapBracket(child2)}"
+    }
 }
 
 class EquivalentFormula(child1: Formula, child2: Formula) : BinaryFormula(child1, child2) {
     override fun copyOf(newChildren: List<Formula>): CombinedFormula {
         return EquivalentFormula(newChildren[0], newChildren[1])
+    }
+
+    override fun toString(): String {
+        return "${wrapBracket(child1)} ↔ ${wrapBracket(child2)}"
     }
 }
 

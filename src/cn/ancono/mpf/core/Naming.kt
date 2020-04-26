@@ -6,4 +6,6 @@ package cn.ancono.mpf.core
  */
 data class QualifiedName(val displayName : String, val fullName : String){
     constructor(name : String) : this(name,name)
+
+
 }

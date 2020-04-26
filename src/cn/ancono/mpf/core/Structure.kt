@@ -50,9 +50,10 @@ class Function(
     override fun hashCode(): Int {
         return name.hashCode()
     }
+
 }
 
-data class Contance(val name: QualifiedName)
+data class Constance(val name: QualifiedName)
 
 /**
  * Describes a structure of first order logic.
@@ -63,6 +64,8 @@ interface Structure {
 
     val functions: Set<Function>
 
-    val contances: Set<Contance>
+    val constances: Set<Constance>
 
 }
+
+val EQUAL_PREDICATE = Predicate(2, QualifiedName("equals"))

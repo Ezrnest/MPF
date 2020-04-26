@@ -1,7 +1,6 @@
 package cn.ancono.mpf.core
 
-
-
+import cn.ancono.mpf.matcher.TMap
 
 
 /*
@@ -20,11 +19,13 @@ open class TermBuilderContext(val context: TMap = emptyMap()) {
     val String.ref : Term
         get() = reference(QualifiedName(this))
 
-    fun variable(name : String) : Term = VarTerm(Variable(name))
+    fun variable(name : String) : Term {
+        return context[name] ?: VarTerm(Variable(name))
+    }
 
-    fun constance(name : QualifiedName) : Term = ConstTerm(Contance(name))
+    fun constance(name : QualifiedName) : Term = ConstTerm(Constance(name))
 
-    fun reference(name : QualifiedName) : Term = NamedTerm(name)
+    fun reference(name : QualifiedName, vararg parameters : Variable) : Term = NamedTerm(name,parameters.toList())
 
     operator fun String.invoke(vararg terms : Term) : Term {
         return FunTerm(Function(terms.size, QualifiedName(this)),terms.asList())

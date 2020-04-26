@@ -71,20 +71,36 @@ class VarTerm(val v: Variable) : AtomicTerm() {
     override fun isIdentityTo(t: Term): Boolean {
         return t is VarTerm && v == t.v
     }
+
+    override fun toString(): String {
+        return v.name
+    }
 }
 
-class ConstTerm(val c: Contance) : AtomicTerm() {
+class ConstTerm(val c: Constance) : AtomicTerm() {
     override val variables: Set<Variable>
         get() = emptySet()
 
     override fun isIdentityTo(t: Term): Boolean {
         return t is ConstTerm && c == t.c
     }
+
+    override fun toString(): String {
+        return c.name.displayName
+    }
 }
 
-class NamedTerm(val name: QualifiedName, override val variables: Set<Variable> = emptySet()) : AtomicTerm() {
+class NamedTerm(val name: QualifiedName,val parameters : List<Variable>) : AtomicTerm() {
+    override val variables: Set<Variable> = parameters.toSet()
     override fun isIdentityTo(t: Term): Boolean {
-        return t is NamedTerm && name == t.name
+        return t is NamedTerm && name == t.name && parameters == t.parameters
+    }
+
+    override fun toString(): String {
+        if (parameters.isEmpty()) {
+            return name.displayName
+        }
+        return name.displayName + parameters.joinToString(",", prefix = "(", postfix = ")") { it.name }
     }
 }
 
@@ -128,5 +144,12 @@ class FunTerm(val f: Function, args: List<Term>) : CombinedTerm(args) {
 
     override fun copyOf(newChildren: List<Term>): CombinedTerm {
         return FunTerm(f, newChildren)
+    }
+
+    override fun toString(): String {
+        if (children.isEmpty()) {
+            return f.name.displayName
+        }
+        return f.name.displayName + children.joinToString(",", prefix = "(", postfix = ")")
     }
 }
