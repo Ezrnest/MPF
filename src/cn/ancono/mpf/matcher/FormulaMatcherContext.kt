@@ -1,6 +1,7 @@
 package cn.ancono.mpf.matcher
 
 import cn.ancono.mpf.core.*
+import cn.ancono.mpf.matcher.FormulaMatcherContext.and
 import cn.ancono.mpf.structure.IN_PREDICATE
 
 
@@ -71,12 +72,65 @@ object FormulaMatcherContext {
     @JvmField
     val Y = "Y".rv
 
-    infix fun FormulaMatcher.and(m: FormulaMatcher): FormulaMatcher = AndFormulaMatcher(listOf(this, m), EmptyMatcher)
-    infix fun FormulaMatcher.or(m: FormulaMatcher): FormulaMatcher = OrFormulaMatcher(listOf(this, m), EmptyMatcher)
+
+
+    infix fun FormulaMatcher.and(m: FormulaMatcher): AndFormulaMatcher{
+        if (this is AndFormulaMatcher) {
+            if (m !is AndFormulaMatcher) {
+                return AndFormulaMatcher(this.children + m,this.fallback)
+            }
+        }else{
+            if(m is AndFormulaMatcher){
+                val list = ArrayList<FormulaMatcher>(m.children.size+1)
+                list.add(this)
+                list.addAll(m.children)
+                return AndFormulaMatcher(list,m.fallback)
+            }
+        }
+        return AndFormulaMatcher(listOf(this,m),EmptyMatcher)
+    }
+    infix fun FormulaMatcher.or(m: FormulaMatcher): OrFormulaMatcher{
+        if (this is OrFormulaMatcher) {
+            if (m !is OrFormulaMatcher) {
+                return OrFormulaMatcher(this.children + m,this.fallback)
+            }
+        }else{
+            if(m is OrFormulaMatcher){
+                val list = ArrayList<FormulaMatcher>(m.children.size+1)
+                list.add(this)
+                list.addAll(m.children)
+                return OrFormulaMatcher(list,m.fallback)
+            }
+        }
+        return OrFormulaMatcher(listOf(this,m),EmptyMatcher)
+    }
     infix fun FormulaMatcher.implies(m: FormulaMatcher): FormulaMatcher = ImplyFormulaMatcher(this, m)
     infix fun FormulaMatcher.equivTo(m: FormulaMatcher): FormulaMatcher = EquivalentFormulaMatcher(this, m)
     operator fun FormulaMatcher.not(): FormulaMatcher = NotFormulaMatcher(this)
+    
+    infix fun AndFormulaMatcher.with(fallback : FormulaMatcher) : FormulaMatcher 
+            = AndFormulaMatcher(this.children,fallback)
+    infix fun OrFormulaMatcher.with(fallback : FormulaMatcher) : FormulaMatcher 
+            = OrFormulaMatcher(this.children,fallback)
 
+    /**
+     * Builds an AndFormulaMatcher with a fallback matcher.
+     */
+    fun andF(fallback: FormulaMatcher, vararg matchers : FormulaMatcher) : FormulaMatcher{
+        require(matchers.isNotEmpty())
+        return AndFormulaMatcher(matchers.toList(),fallback)
+    }
+    /**
+     * Builds an OrFormulaMatcher with a fallback matcher.
+     */
+    fun orF(fallback: FormulaMatcher, vararg matchers : FormulaMatcher) : FormulaMatcher{
+        require(matchers.isNotEmpty())
+        return OrFormulaMatcher(matchers.toList(),fallback)
+    }
+    
+    
+    
+    
     class PredicateFunction(val name: QualifiedName) {
         operator fun invoke(vararg terms: TermMatcher): FormulaMatcher {
             val predicate = Predicate(terms.size, name)

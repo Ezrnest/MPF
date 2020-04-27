@@ -17,9 +17,9 @@ interface Rule{
 //    val arguments : List<ArgumentType>
 
     /**
-     * Applies this rule to the
+     * Applies this rule to the given formulas and terms, tries to return the desired result.
      */
-    fun apply(formulas : List<Formula>, terms : List<Term>, desiredResult : Formula?) : Formula
+    fun apply(formulas : List<Formula>, terms : List<Term>, desiredResult : Formula?) : Formula?
 
     val inputMatcher : FormulaMatcher
 

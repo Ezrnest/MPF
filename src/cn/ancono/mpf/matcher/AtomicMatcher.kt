@@ -17,8 +17,8 @@ interface CombinedMatcher<T : Node<T>, R : MatchResult> : Matcher<T, R> {}
 
 open class UnorderedMatcher<T : Node<T>, R : MatchResult>(
     val type: Class<out CombinedNode<*>>,
-    val children: List<Matcher<T, R>>,
-    val fallback: Matcher<T, R>
+    open val children: List<Matcher<T, R>>,
+    open val fallback: Matcher<T, R>
 ) : CombinedMatcher<T, R> {
     override fun match(x: T, previousResult: R?): R? {
         if (x !is CombinedNode<*> || !type.isInstance(x)) {
@@ -33,7 +33,7 @@ open class UnorderedMatcher<T : Node<T>, R : MatchResult>(
 
 open class OrderedMatcher<T : Node<T>, R : MatchResult>(
     val type: Class<out CombinedNode<*>>,
-    val children: List<Matcher<T, R>>
+    open val children: List<Matcher<T, R>>
 ) : CombinedMatcher<T, R> {
     override fun match(x: T, previousResult: R?): R? {
         if (x !is CombinedNode<*> || !type.isInstance(x)) {

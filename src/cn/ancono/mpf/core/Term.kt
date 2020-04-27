@@ -5,19 +5,19 @@ package cn.ancono.mpf.core
  * Describes a term in the
  * Created by liyicheng at 2020-04-04 18:53
  */
-interface Term : Node<Term> {
-    val variables: Set<Variable>
+abstract class Term : Node<Term> {
+    abstract val variables: Set<Variable>
 
-    override val childCount: Int
+    abstract override val childCount: Int
 
 
-    fun isIdentityTo(t: Term): Boolean
+    abstract fun isIdentityTo(t: Term): Boolean
 
     /**
      * Applies the function recursively to each term nodes in this term. The order of
      * iteration is pre-order.
      */
-    fun recurApply(f: (Term) -> Unit): Unit
+    abstract fun recurApply(f: (Term) -> Unit): Unit
 
     /**
      * Applies the mapping function recursively to each term nodes in this term to build a new term.
@@ -27,7 +27,7 @@ interface Term : Node<Term> {
      * as a parameter. If the term has no sub-term, then the two parameters will be the same.
      *
      */
-    fun recurMap(m: (origin: Term, mapped: Term) -> Term): Term
+    abstract fun recurMap(m: (origin: Term, mapped: Term) -> Term): Term
 
     /**
      * Recursively maps the term and all it sub-terms and build a new term. The function [before] will be
@@ -38,10 +38,17 @@ interface Term : Node<Term> {
      *
      *
      */
-    fun recurMap(before: (Term) -> Term?, after: (Term) -> Term): Term
+    abstract fun recurMap(before: (Term) -> Term?, after: (Term) -> Term): Term
+
+    abstract fun renameVar(nameMap: Map<Variable, Variable>): Term
+
+    abstract fun regularizeVarName(
+        nameMap: MutableMap<Variable, Variable>,
+        nameProvider: Iterator<Variable>
+    ): Term
 }
 
-abstract class AtomicTerm : Term, AtomicNode<Term> {
+abstract class AtomicTerm : Term(), AtomicNode<Term> {
 
     override val childCount: Int
         get() = 0
@@ -75,6 +82,22 @@ class VarTerm(val v: Variable) : AtomicTerm() {
     override fun toString(): String {
         return v.name
     }
+
+    override fun renameVar(nameMap: Map<Variable, Variable>): Term {
+        val nv = nameMap[v] ?: return this
+        return VarTerm(nv)
+    }
+
+    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Term {
+        var nv = nameMap[v]
+        return if (nv != null) {
+            VarTerm(nv)
+        } else {
+            nv = nameProvider.next()
+            nameMap[v] = nv
+            VarTerm(nv)
+        }
+    }
 }
 
 class ConstTerm(val c: Constance) : AtomicTerm() {
@@ -88,9 +111,17 @@ class ConstTerm(val c: Constance) : AtomicTerm() {
     override fun toString(): String {
         return c.name.displayName
     }
+
+    override fun renameVar(nameMap: Map<Variable, Variable>): Term {
+        return this
+    }
+
+    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Term {
+        return this
+    }
 }
 
-class NamedTerm(val name: QualifiedName,val parameters : List<Variable>) : AtomicTerm() {
+class NamedTerm(val name: QualifiedName, val parameters: List<Variable>) : AtomicTerm() {
     override val variables: Set<Variable> = parameters.toSet()
     override fun isIdentityTo(t: Term): Boolean {
         return t is NamedTerm && name == t.name && parameters == t.parameters
@@ -102,13 +133,44 @@ class NamedTerm(val name: QualifiedName,val parameters : List<Variable>) : Atomi
         }
         return name.displayName + parameters.joinToString(",", prefix = "(", postfix = ")") { it.name }
     }
+
+    override fun renameVar(nameMap: Map<Variable, Variable>): Term {
+        if (variables.any { it in nameMap }) {
+            return NamedTerm(name, parameters.map { nameMap.getOrDefault(it, it) })
+        }
+        return this
+    }
+
+    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Term {
+        val nParameters = parameters.map<Variable,Variable> {v ->
+            var nv = nameMap[v]
+            if (nv == null) {
+                nv = nameProvider.next()
+                nameMap[v] = nv
+            }
+            nv
+        }
+        return NamedTerm(name,nParameters)
+    }
 }
 
-abstract class CombinedTerm(override val children: List<Term>) : Term, CombinedNode<Term> {
+abstract class CombinedTerm(override val children: List<Term>) : Term(), CombinedNode<Term> {
     override val childCount: Int
         get() = children.size
 
     abstract override fun copyOf(newChildren: List<Term>): CombinedTerm
+
+    override fun renameVar(nameMap: Map<Variable, Variable>): Term {
+        if (variables.any { it in nameMap }) {
+            return copyOf(children.map { it.renameVar(nameMap) })
+        }
+        return this
+    }
+
+    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Term {
+        val newChildren = children.map { it.regularizeVarName(nameMap, nameProvider) }
+        return copyOf(newChildren)
+    }
 }
 
 /**
@@ -118,7 +180,8 @@ class FunTerm(val f: Function, args: List<Term>) : CombinedTerm(args) {
     override val variables: Set<Variable> by lazy { args.flatMapTo(hashSetOf()) { it.variables } }
 
     override fun isIdentityTo(t: Term): Boolean {
-        return t is FunTerm && f == t.f && children == t.children
+        return t is FunTerm && f == t.f &&
+                Utils.collectionEquals(children, t.children,Term::isIdentityTo)
     }
 
     override fun recurApply(f: (Term) -> Unit) {
@@ -152,4 +215,6 @@ class FunTerm(val f: Function, args: List<Term>) : CombinedTerm(args) {
         }
         return f.name.displayName + children.joinToString(",", prefix = "(", postfix = ")")
     }
+
+
 }

@@ -59,6 +59,38 @@ sealed class Formula : Node<Formula> {
     } else {
         f.toString()
     }
+
+    /**
+     * Renames all the variables in this formula according to the map. This method may
+     * change the semantic meaning of the formula.
+     */
+    abstract fun renameAllVar(nameMap: Map<Variable, Variable>): Formula
+
+
+    /**
+     * Renames the variables in this formula. The [nameProvider] should provide a sequence of non-duplicate names.
+     */
+    fun regularizeVarName(nameProvider: Iterator<Variable> = getXNNameProvider().iterator()): Formula {
+        return regularizeVarName(mutableMapOf(), nameProvider)
+    }
+
+    internal abstract fun regularizeVarName(
+        nameMap: MutableMap<Variable, Variable>,
+        nameProvider: Iterator<Variable>
+    ): Formula
+
+    companion object {
+        /**
+         * Returns a name provider that returns "x1", "x2" ...
+         */
+        fun getXNNameProvider(leadingChar: String = "x"): Sequence<Variable> = sequence {
+            var n = 1
+            while (true) {
+                yield(Variable("$leadingChar$n"))
+                n++
+            }
+        }
+    }
 }
 
 sealed class AtomicFormula : Formula(), AtomicNode<Formula> {
@@ -79,6 +111,8 @@ sealed class AtomicFormula : Formula(), AtomicNode<Formula> {
 
     override val bracketLevel: Int
         get() = 0
+
+
 }
 
 /**
@@ -94,13 +128,22 @@ class PredicateFormula(val p: Predicate, val terms: List<Term>) : AtomicFormula(
         if (this === other) return true
         if (other !is PredicateFormula) return false
         if (p != other.p) return false
-        if (terms != other.terms) return false
 
-        return true
+        return Utils.collectionEquals(this.terms,other.terms,Term::isIdentityTo)
+
     }
 
     override fun toString(): String {
         return p.name.displayName + terms.joinToString(",", prefix = "(", postfix = ")")
+    }
+
+    override fun renameAllVar(nameMap: Map<Variable, Variable>): Formula {
+        return PredicateFormula(p, terms.map { it.renameVar(nameMap) })
+    }
+
+    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
+        val newTerms = terms.map { it.regularizeVarName(nameMap, nameProvider) }
+        return PredicateFormula(p, newTerms)
     }
 }
 
@@ -126,6 +169,25 @@ class NamedFormula(val name: QualifiedName, val parameters: List<Variable> = emp
         }
         return name.displayName + parameters.joinToString(",", prefix = "(", postfix = ")") { it.name }
     }
+
+    override fun renameAllVar(nameMap: Map<Variable, Variable>): Formula {
+        if (allVariables.any { it in nameMap }) {
+            return NamedFormula(name, parameters.map { nameMap.getOrDefault(it, it) })
+        }
+        return this
+    }
+
+    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
+        val nParameters = parameters.map<Variable,Variable> { v ->
+            var nv = nameMap[v]
+            if (nv == null) {
+                nv = nameProvider.next()
+                nameMap[v] = nv
+            }
+            nv
+        }
+        return NamedFormula(name, nParameters)
+    }
 }
 
 
@@ -137,7 +199,7 @@ sealed class CombinedFormula(override val children: List<Formula>) : Formula(), 
     override fun isIdentityTo(other: Formula): Boolean {
         return other is CombinedFormula &&
                 this.javaClass == other.javaClass &&
-                children == other.children
+                Utils.collectionEquals(this.children,other.children,Formula::isIdentityTo)
     }
 
     override val childCount: Int
@@ -164,7 +226,17 @@ sealed class CombinedFormula(override val children: List<Formula>) : Formula(), 
         return f(copyOf(children.map { it.recurMap(f) }))
     }
 
+    override fun renameAllVar(nameMap: Map<Variable, Variable>): Formula {
+        if (allVariables.any { it in nameMap }) {
+            return copyOf(children.map { it.renameAllVar(nameMap) })
+        }
+        return this
+    }
 
+    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
+        val newChildren = children.map { it.regularizeVarName(nameMap, nameProvider) }
+        return copyOf(newChildren)
+    }
 }
 
 
@@ -191,6 +263,8 @@ sealed class BinaryFormula(child1: Formula, child2: Formula) : CombinedFormula(l
 
     override val bracketLevel: Int
         get() = 10
+
+
 }
 
 sealed class QualifiedFormula(child: Formula, val v: Variable) :
@@ -201,9 +275,45 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
 
 
     override fun isIdentityTo(other: Formula): Boolean {
-        return other is QualifiedFormula &&
-                super.isIdentityTo(other) &&
-                v == other.v
+        if (other !is QualifiedFormula) {
+            return false
+        }
+        val c1 = child
+        val c2 = other.child
+        if (v == other.v) {
+            return c1.isIdentityTo(c2)
+        }
+
+        val nv = getXNNameProvider("$").first {
+            it !in c1.allVariables &&
+                    it !in c2.allVariables
+        }
+        val f1 = c1.renameAllVar(mapOf(v to nv))
+        val f2 = c2.renameAllVar(mapOf(other.v to nv))
+        return f1.isIdentityTo(f2)
+    }
+
+    abstract fun copyOf(child: Formula, v: Variable): QualifiedFormula
+
+    override fun copyOf(newChildren: List<Formula>): CombinedFormula {
+        require(newChildren.size == 1)
+        return copyOf(newChildren.first(), v)
+    }
+
+    override fun renameAllVar(nameMap: Map<Variable, Variable>): Formula {
+        val nv = nameMap.getOrDefault(v, v)
+        return copyOf(child.renameAllVar(nameMap), nv)
+    }
+
+    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
+        val nv = nameProvider.next()
+        val original = nameMap[v]
+        nameMap[v] = nv
+        val newChild = child.regularizeVarName(nameMap, nameProvider)
+        if (original != null) {
+            nameMap[v] = original
+        }
+        return copyOf(newChild,nv)
     }
 
     override val bracketLevel: Int
@@ -219,6 +329,10 @@ class NotFormula(child: Formula) : UnaryFormula(child) {
         get() = 5
 
     override fun toString(): String = "¬${wrapBracket(child)}"
+
+    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
+        return NotFormula(child.regularizeVarName(nameMap, nameProvider))
+    }
 }
 
 sealed class MultiFormula(children: List<Formula>) : CombinedFormula(children) {
@@ -241,6 +355,8 @@ sealed class MultiFormula(children: List<Formula>) : CombinedFormula(children) {
 
     override val bracketLevel: Int
         get() = 15
+
+
 }
 
 class AndFormula(children: List<Formula>) : MultiFormula(children) {
@@ -264,8 +380,8 @@ class OrFormula(children: List<Formula>) : MultiFormula(children) {
 }
 
 class ForAnyFormula(child: Formula, v: Variable) : QualifiedFormula(child, v) {
-    override fun copyOf(newChildren: List<Formula>): CombinedFormula {
-        return ForAnyFormula(newChildren[0], v)
+    override fun copyOf(child: Formula, v: Variable): QualifiedFormula {
+        return ForAnyFormula(child, v)
     }
 
     override fun toString(): String {
@@ -274,8 +390,8 @@ class ForAnyFormula(child: Formula, v: Variable) : QualifiedFormula(child, v) {
 }
 
 class ExistFormula(child: Formula, v: Variable) : QualifiedFormula(child, v) {
-    override fun copyOf(newChildren: List<Formula>): CombinedFormula {
-        return ExistFormula(newChildren[0], v)
+    override fun copyOf(child: Formula, v: Variable): QualifiedFormula {
+        return ExistFormula(child, v)
     }
 
     override fun toString(): String {

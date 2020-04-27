@@ -1,6 +1,6 @@
 package test
 
-import cn.ancono.mpf.core.buildFormula
+import cn.ancono.mpf.builder.buildFormula
 
 
 /*
@@ -10,8 +10,8 @@ object BuilderTest {
     fun test1() {
         val f = buildFormula {
             forAny(x) {
-                x belongTo A implies (x belongTo B)
-            } equivTo "contains".r(A, B)
+                (x belongTo A) implies (x belongTo B)
+            } equivTo "contains".p(A, B)
         }
         println(f)
     }

@@ -1,5 +1,7 @@
 package cn.ancono.mpf.matcher
 
+import cn.ancono.mpf.builder.RefFormulaContext
+import cn.ancono.mpf.builder.RefTermContext
 import cn.ancono.mpf.core.*
 
 
@@ -15,7 +17,7 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
     //    fun partMatches(f: Formula): FormulaMatchResult?
     override fun match(x: Formula, previousResult: FormulaResult?): FormulaResult?
 
-    fun replaceOne(f: Formula, builderAction: FormulaBuilderContext.() -> Formula): List<Formula> {
+    fun replaceOne(f: Formula, builderAction: RefFormulaContext.() -> Formula): List<Formula> {
         return f.recurMapMulti {
             val re = match(it)
             if (re != null) {
@@ -26,7 +28,7 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
         }
     }
 
-    fun replaceAll(f : Formula, builderAction: FormulaBuilderContext.() -> Formula): Formula {
+    fun replaceAll(f : Formula, builderAction: RefFormulaContext.() -> Formula): Formula {
         return f.recurMap {
             val re = match(it)
             re?.replace(builderAction) ?: it
@@ -40,15 +42,15 @@ class FormulaResult(
     val varMap: TMap
 ) : MatchResult {
 
-    fun replace(builderAction: FormulaBuilderContext.() -> Formula): Formula {
+    fun replace(builderAction: RefFormulaContext.() -> Formula): Formula {
         val context = toBuilderContext()
         return builderAction(context).flatten()
     }
 
-    fun toBuilderContext(): FormulaBuilderContext =
-        FormulaBuilderContext(
+    fun toBuilderContext(): RefFormulaContext =
+        RefFormulaContext(
             formulaMap,
-            TermBuilderContext(varMap)
+            RefTermContext(varMap)
         )
 
     override fun toString(): String {
@@ -183,12 +185,12 @@ class ExistFormulaMatcher(varName: String, sub: FormulaMatcher) :
 class ForAnyFormulaMatcher(varName: String, sub: FormulaMatcher) :
     QualifiedFormulaMatcher(ForAnyFormula::class.java, varName, sub), FormulaMatcher
 
-class AndFormulaMatcher(subMatchers: List<FormulaMatcher>, fallback: FormulaMatcher) :
+class AndFormulaMatcher(override val children:List<FormulaMatcher>, override val fallback: FormulaMatcher) :
     UnorderedMatcher<Formula, FormulaResult>(
-        AndFormula::class.java, subMatchers, fallback
+        AndFormula::class.java, children, fallback
     ), FormulaMatcher
 
-class OrFormulaMatcher(subMatchers: List<FormulaMatcher>, fallback: FormulaMatcher) :
+class OrFormulaMatcher(override val children:List<FormulaMatcher>, override val fallback: FormulaMatcher) :
     UnorderedMatcher<Formula, FormulaResult>(
-        OrFormula::class.java, subMatchers, fallback
+        OrFormula::class.java, children, fallback
     ), FormulaMatcher
