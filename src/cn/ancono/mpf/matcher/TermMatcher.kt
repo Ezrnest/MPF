@@ -9,8 +9,9 @@ class TermMatchResult(
 ) : MatchResult {
 }
 
-fun TermMatchResult?.toNonNull() : TermMatchResult{
-    return this?: TermMatchResult(emptyMap())
+
+fun TermMatchResult?.toNonNull(): TermMatchResult {
+    return this ?: TermMatchResult(emptyMap())
 }
 
 
@@ -18,35 +19,40 @@ interface TermMatcher : Matcher<Term, TermMatchResult> {
     val variables: Set<String>
 }
 
+
 class RefTermMatcher(val refName: String) : TermMatcher {
 
     override val variables: Set<String> = setOf(refName)
-    override fun match(x: Term, previousResult: TermMatchResult?): TermMatchResult? {
+
+
+    override fun match(x: Term, previousResult: TermMatchResult?): List<TermMatchResult> {
         val varMap = previousResult?.varMap ?: emptyMap()
         val required = varMap[refName]
         return if (required == null) {
-            TermMatchResult(varMap + (refName to x))
+            listOf(TermMatchResult(varMap + (refName to x)))
         } else {
-            if (x == required) {
-                TermMatchResult(varMap)
+            if (x.isIdentityTo(required)) {
+                listOf(TermMatchResult(varMap))
             } else {
-                null
+                emptyList()
             }
         }
     }
 }
 
-class VarTermMatcher(val variable: Variable) : TermMatcher{
+class VarTermMatcher(val variable: Variable) : TermMatcher {
     override val variables: Set<String>
         get() = emptySet()
 
-    override fun match(x: Term, previousResult: TermMatchResult?): TermMatchResult? {
-        return if(x is VarTerm && x.v == variable){
-            previousResult.toNonNull()
-        }else{
-            null
+    override fun match(x: Term, previousResult: TermMatchResult?): List<TermMatchResult> {
+        return if (x is VarTerm && x.v == variable) {
+            listOf(previousResult.toNonNull())
+        } else {
+            emptyList()
         }
     }
+
+
 }
 
 
@@ -55,25 +61,25 @@ class ConstTermMatcher(val c: Constance) : TermMatcher {
     override val variables: Set<String>
         get() = emptySet()
 
-    override fun match(x: Term, previousResult: TermMatchResult?): TermMatchResult? {
+    override fun match(x: Term, previousResult: TermMatchResult?): List<TermMatchResult>{
         return if (x is ConstTerm && x.c == c) {
-            previousResult.toNonNull()
+            listOf(previousResult.toNonNull())
         } else {
-            null
+            emptyList()
         }
     }
 
 }
 
-class FunTermMatcher(val function: Function, val subMatchers: List<TermMatcher>,val ordered : Boolean) : TermMatcher {
-    override fun match(x: Term, previousResult: TermMatchResult?): TermMatchResult? {
+class FunTermMatcher(val function: Function, val subMatchers: List<TermMatcher>, val ordered: Boolean) : TermMatcher {
+    override fun match(x: Term, previousResult: TermMatchResult?): List<TermMatchResult> {
         if (x !is FunTerm || x.f != function) {
-            return null
+            return emptyList()
         }
         return if (ordered) {
-            MatcherUtil.orderedMatch(x.children,subMatchers,previousResult)
-        }else{
-            MatcherUtil.unorderedMatch(x.children,subMatchers,previousResult)
+            MatcherUtil.orderedMatch(x.children, subMatchers, previousResult)
+        } else {
+            MatcherUtil.unorderedMatch(x.children, subMatchers, previousResult)
         }
     }
 

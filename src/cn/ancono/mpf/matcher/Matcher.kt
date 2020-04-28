@@ -12,12 +12,21 @@ interface MatchResult
  * Describes a matcher for a tree structure.
  * @author liyicheng
  */
-interface Matcher<T : Node<T>, R : MatchResult> {
+interface Matcher<T : Node<T>, R : Any> {
 
     /**
-     * Tries to match the given input node.
+     * Tries to match the given input node and returns a list of results.
+     * If there is no result, returns an empty list.
      */
-    fun match(x: T, previousResult: R? = null): R?
+    fun match(x: T, previousResult: R?  = null): List<R>
+
+    fun matchAll(x : T, previousResults : List<R>) : List<R>{
+        return if (previousResults.isEmpty()) {
+            match(x,null)
+        }else{
+            previousResults.flatMap { match(x,it) }
+        }
+    }
 }
 
 

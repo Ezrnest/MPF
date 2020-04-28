@@ -40,7 +40,9 @@ abstract class Term : Node<Term> {
      */
     abstract fun recurMap(before: (Term) -> Term?, after: (Term) -> Term): Term
 
-    abstract fun renameVar(nameMap: Map<Variable, Variable>): Term
+    abstract fun renameVar(renamer : (Variable)->Variable): Term
+
+    open fun renameVar(nameMap: Map<Variable, Variable>): Term = renameVar { nameMap.getOrDefault(it,it) }
 
     abstract fun regularizeVarName(
         nameMap: MutableMap<Variable, Variable>,
@@ -83,6 +85,10 @@ class VarTerm(val v: Variable) : AtomicTerm() {
         return v.name
     }
 
+    override fun renameVar(renamer: (Variable) -> Variable): Term {
+        return VarTerm(renamer(v))
+    }
+
     override fun renameVar(nameMap: Map<Variable, Variable>): Term {
         val nv = nameMap[v] ?: return this
         return VarTerm(nv)
@@ -112,7 +118,7 @@ class ConstTerm(val c: Constance) : AtomicTerm() {
         return c.name.displayName
     }
 
-    override fun renameVar(nameMap: Map<Variable, Variable>): Term {
+    override fun renameVar(renamer: (Variable) -> Variable): Term {
         return this
     }
 
@@ -141,6 +147,10 @@ class NamedTerm(val name: QualifiedName, val parameters: List<Variable>) : Atomi
         return this
     }
 
+    override fun renameVar(renamer: (Variable) -> Variable): Term {
+        return NamedTerm(name, parameters.map(renamer))
+    }
+
     override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Term {
         val nParameters = parameters.map<Variable,Variable> {v ->
             var nv = nameMap[v]
@@ -165,6 +175,10 @@ abstract class CombinedTerm(override val children: List<Term>) : Term(), Combine
             return copyOf(children.map { it.renameVar(nameMap) })
         }
         return this
+    }
+
+    override fun renameVar(renamer: (Variable) -> Variable): Term {
+        return copyOf(children.map { it.renameVar(renamer) })
     }
 
     override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Term {

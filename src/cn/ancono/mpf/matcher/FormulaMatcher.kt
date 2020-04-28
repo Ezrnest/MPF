@@ -8,6 +8,7 @@ import cn.ancono.mpf.core.*
 typealias FMap = Map<String, Formula>
 typealias TMap = Map<String, Term>
 
+
 /*
  * Created by liyicheng at 2020-04-05 15:05
  */
@@ -15,27 +16,42 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
 //    fun fullMatches(f: Formula, formulaMap: FMap = emptyMap(), varMap: TMap = emptyMap()): FullFormulaMatchResult?
 
     //    fun partMatches(f: Formula): FormulaMatchResult?
-    override fun match(x: Formula, previousResult: FormulaResult?): FormulaResult?
+    override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult>
 
-    fun replaceOne(f: Formula, builderAction: RefFormulaContext.() -> Formula): List<Formula> {
+//    {
+//        val results = arrayListOf<FormulaResult>()
+//        if (previousResult == null || previousResult.isEmpty()) {
+//            return matchSingle(x)
+//        }
+//        for (pr in previousResult) {
+//            val result = matchSingle(x, pr)
+//            if (result != null) {
+//                results.addAll(result)
+//            }
+//        }
+//        return results
+//    }
+
+
+    open fun replaceOne(f: Formula, builderAction: RefFormulaContext.() -> Formula): List<Formula> {
         return f.recurMapMulti {
-            val re = match(it)
-            if (re != null) {
-                listOf(re.replace(builderAction))
+            val res = match(it, null)
+            res.map { re -> re.replace(builderAction) }
+        }
+    }
+
+    open fun replaceAll(f: Formula, builderAction: RefFormulaContext.() -> Formula): Formula {
+        return f.recurMap {
+            val re = match(it, null)
+            if (re.isEmpty()) {
+                it
             } else {
-                emptyList()
+                re.first().replace(builderAction)
             }
         }
     }
-
-    fun replaceAll(f : Formula, builderAction: RefFormulaContext.() -> Formula): Formula {
-        return f.recurMap {
-            val re = match(it)
-            re?.replace(builderAction) ?: it
-        }
-    }
-
 }
+
 
 class FormulaResult(
     val formulaMap: FMap,
@@ -86,23 +102,26 @@ val FormulaResult?.destructed: Pair<FMap, TMap>
 //}
 
 object EmptyMatcher : FormulaMatcher {
-    override fun match(x: Formula, previousResult: FormulaResult?): FormulaResult? {
-        return null
+    override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult> {
+        return emptyList()
     }
+    //    override fun matchSingle(x: Formula, previousResult: FormulaResult?): FormulaResults? {
+//        return null
+//    }
 }
 
 class RefFormulaMatcher(val name: String) : FormulaMatcher, AtomicMatcher<Formula, FormulaResult> {
 
-    override fun match(x: Formula, previousResult: FormulaResult?): FormulaResult? {
+    override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult> {
         val (formulaMap, varMap) = previousResult.destructed
         val required = formulaMap[name]
         return if (required == null) {
-            FormulaResult(formulaMap + (name to x), varMap)
+            listOf(FormulaResult(formulaMap + (name to x), varMap))
         } else {
             if (required.isIdentityTo(x)) {
-                FormulaResult(formulaMap, varMap)
+                listOf(FormulaResult(formulaMap, varMap))
             } else {
-                null
+                emptyList()
             }
         }
     }
@@ -110,39 +129,42 @@ class RefFormulaMatcher(val name: String) : FormulaMatcher, AtomicMatcher<Formul
 
 class NamedFormulaMatcher(val name: QualifiedName) :
     FormulaMatcher {
-
-    override fun match(x: Formula, previousResult: FormulaResult?): FormulaResult? {
+    override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult> {
         val (formulaMap, varMap) = previousResult.destructed
         return if (x is NamedFormula && x.name == name) {
-            FormulaResult(formulaMap, varMap)
-        } else {
-            null
+            listOf(FormulaResult(formulaMap, varMap))
+        }else{
+            emptyList()
         }
     }
+
 }
 
-class PredicateFormulaMatcher(val predicate: Predicate, val termMatchers: List<TermMatcher>, val ordered: Boolean = true) :
+class PredicateFormulaMatcher(
+    val predicate: Predicate,
+    val termMatchers: List<TermMatcher>,
+    val ordered: Boolean = true
+) :
     FormulaMatcher {
-
-    override fun match(x: Formula, previousResult: FormulaResult?): FormulaResult? {
+    override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult> {
         val (formulaMap, varMap) = previousResult.destructed
-        if (x is PredicateFormula && x.p == predicate) {
-            val result = if (ordered) {
-                MatcherUtil.orderedMatch(
-                    x.terms, termMatchers,
-                    TermMatchResult(varMap)
-                )
-            } else {
-                MatcherUtil.unorderedMatch(
-                    x.terms, termMatchers,
-                    TermMatchResult(varMap)
-                )
-            } ?: return null
-            return FormulaResult(formulaMap, varMap + result.varMap)
-        } else {
-            return null
+        if (x !is PredicateFormula || x.p != predicate) {
+            return emptyList()
         }
+        val results = if (ordered) {
+            MatcherUtil.orderedMatch(
+                x.terms, termMatchers,
+                TermMatchResult(varMap)
+            )
+        } else {
+            MatcherUtil.unorderedMatch(
+                x.terms, termMatchers,
+                TermMatchResult(varMap)
+            )
+        }
+        return results.map { r -> FormulaResult(formulaMap, varMap + r.varMap) }
     }
+
 }
 
 class NotFormulaMatcher(subMatcher: FormulaMatcher) :
@@ -162,21 +184,38 @@ class EquivalentFormulaMatcher(sub1: FormulaMatcher, sub2: FormulaMatcher) :
         EmptyMatcher
     ), FormulaMatcher
 
+/**
+ * Creates a qualified formula matcher. The matcher will not store the qualified variable (named as
+ * [varName]) in the matching result.
+ */
 open class QualifiedFormulaMatcher(
     val type: Class<out QualifiedFormula>,
     val varName: String,
     val sub: FormulaMatcher
 ) :
     FormulaMatcher {
-    override fun match(x: Formula, previousResult: FormulaResult?): FormulaResult? {
+
+    override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult> {
         if (x !is QualifiedFormula || !type.isInstance(x)) {
-            return null
+            return emptyList()
         }
         val variable = x.v
         val (formulaMap, varMap) = previousResult.destructed
         val nVarMap = varMap + (varName to VarTerm(variable))
-        return sub.match(x.child, FormulaResult(formulaMap, nVarMap))
+        val res = sub.match(x.child, FormulaResult(formulaMap, nVarMap))
+        return res.map {re ->
+            val (m1, m2) = re.destructed
+            val original = varMap[varName]
+            val m3 = m2.toMutableMap()
+            if (original != null) {
+                m3[varName] = original
+            } else {
+                m3.remove(varName)
+            }
+            FormulaResult(m1, m3)
+        }
     }
+
 }
 
 class ExistFormulaMatcher(varName: String, sub: FormulaMatcher) :
@@ -185,12 +224,12 @@ class ExistFormulaMatcher(varName: String, sub: FormulaMatcher) :
 class ForAnyFormulaMatcher(varName: String, sub: FormulaMatcher) :
     QualifiedFormulaMatcher(ForAnyFormula::class.java, varName, sub), FormulaMatcher
 
-class AndFormulaMatcher(override val children:List<FormulaMatcher>, override val fallback: FormulaMatcher) :
+class AndFormulaMatcher(override val children: List<FormulaMatcher>, override val fallback: FormulaMatcher) :
     UnorderedMatcher<Formula, FormulaResult>(
         AndFormula::class.java, children, fallback
     ), FormulaMatcher
 
-class OrFormulaMatcher(override val children:List<FormulaMatcher>, override val fallback: FormulaMatcher) :
+class OrFormulaMatcher(override val children: List<FormulaMatcher>, override val fallback: FormulaMatcher) :
     UnorderedMatcher<Formula, FormulaResult>(
         OrFormula::class.java, children, fallback
     ), FormulaMatcher

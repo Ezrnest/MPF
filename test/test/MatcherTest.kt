@@ -1,6 +1,8 @@
 package test
 
 import cn.ancono.mpf.builder.buildFormula
+import cn.ancono.mpf.core.QualifiedName
+import cn.ancono.mpf.core.Variable
 import cn.ancono.mpf.matcher.buildMatcher
 
 
@@ -35,13 +37,13 @@ object MatcherTest {
             "contains".r(X, Y)
         }
 
-        val replace = matcher.replaceOne(f){
+        val replace = matcher.replaceOne(f) {
             forAny(a) {
                 (a belongTo X) implies (a belongTo Y)
             }
         }
         replace.forEach { println(it) }
-        val replace2 = matcher.replaceAll(f){
+        val replace2 = matcher.replaceAll(f) {
             forAny(a) {
                 (a belongTo X) implies (a belongTo Y)
             }
@@ -62,11 +64,31 @@ object MatcherTest {
         val matcher = buildMatcher {
             val S = "S".ref
             ((R and (P equivTo Q)) with S) implies P
-
         }
         val result = matcher.match(f)
-        println(result)
+        result.forEach { println(it) }
 
+    }
+
+    fun test4() {
+        val f = buildFormula {
+            forAny(x) {
+                named(QualifiedName("P"), Variable("x"))
+            }
+        }
+        val matcher = buildMatcher {
+            forAny(x) {
+                TODO()
+            }
+        }
+//        val re = matcher.match(f)
+//        println(re)
+//
+//        val replaced = matcher.replaceAll(f){
+//            val x = unusedVar()
+//            val y = unusedVar()
+//
+//        }
     }
 
 }

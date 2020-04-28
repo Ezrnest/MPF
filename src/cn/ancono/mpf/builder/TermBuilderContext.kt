@@ -12,26 +12,26 @@ abstract class TermBuilderContext {
 
 //    val x =
 
-    val String.c : Term
+    val String.c: Term
         get() = constance(QualifiedName(this))
 
-    val String.v : Term
+    val String.v: Term
         get() = variable(this)
 
-    val String.n : Term
+    val String.n: Term
         get() = named(QualifiedName(this))
 
-    fun variable(name : String) : Term {
+    fun variable(name: String): Term {
         return VarTerm(Variable(name))
     }
 
-    fun constance(name : QualifiedName) : Term =
+    fun constance(name: QualifiedName): Term =
         ConstTerm(Constance(name))
 
-    fun named(name : QualifiedName, vararg parameters : Variable) : Term =
+    fun named(name: QualifiedName, vararg parameters: Variable): Term =
         NamedTerm(name, parameters.toList())
 
-    open operator fun String.invoke(vararg terms : Term) : Term {
+    open operator fun String.invoke(vararg terms: Term): Term {
         return FunTerm(
             Function(
                 terms.size,
@@ -41,7 +41,7 @@ abstract class TermBuilderContext {
     }
 }
 
-object SimpleTermContext : TermBuilderContext(){
+object SimpleTermContext : TermBuilderContext() {
     @JvmField
     val a = "a".v
 
@@ -72,7 +72,11 @@ object SimpleTermContext : TermBuilderContext(){
     @JvmField
     val Y = "Y".v
 }
-class RefTermContext(val context: TMap): TermBuilderContext(){
+
+class RefTermContext(val context: TMap) : TermBuilderContext() {
+
+    val usedVariables = context.values.flatMapTo(hashSetOf()) { it.variables }
+
 
     @JvmField
     val x = "x".ref
@@ -86,14 +90,19 @@ class RefTermContext(val context: TMap): TermBuilderContext(){
     @JvmField
     val Y = "Y".ref
 
-    val String.ref : Term
+    val String.ref: Term
         get() = termRef(this)
 
-    fun termRef(name : String) : Term {
-        return context[name]?:throw NoSuchElementException("No term named `$name`")
+    fun termRef(name: String): Term {
+        return context[name] ?: throw NoSuchElementException("No term named `$name`")
+    }
+
+    fun unusedVar(): Term {
+        val v = Variable.getXNNameProvider().first { it !in usedVariables }
+        return VarTerm(v)
     }
 }
 
-fun buildTerm(builderAction : TermBuilderContext.() -> Term) : Term = builderAction(
+fun buildTerm(builderAction: TermBuilderContext.() -> Term): Term = builderAction(
     SimpleTermContext
 )

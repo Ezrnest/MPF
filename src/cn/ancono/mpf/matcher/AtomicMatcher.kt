@@ -10,19 +10,19 @@ import cn.ancono.mpf.core.Node
 /**
  * @author liyicheng
  */
-interface AtomicMatcher<T : Node<T>, R : MatchResult> : Matcher<T, R> {
+interface AtomicMatcher<T : Node<T>, R : Any > : Matcher<T, R> {
 }
 
-interface CombinedMatcher<T : Node<T>, R : MatchResult> : Matcher<T, R> {}
+interface CombinedMatcher<T : Node<T>, R  : Any> : Matcher<T, R> {}
 
-open class UnorderedMatcher<T : Node<T>, R : MatchResult>(
+open class UnorderedMatcher<T : Node<T>, R : Any>(
     val type: Class<out CombinedNode<*>>,
     open val children: List<Matcher<T, R>>,
     open val fallback: Matcher<T, R>
 ) : CombinedMatcher<T, R> {
-    override fun match(x: T, previousResult: R?): R? {
+    override fun match(x: T, previousResult: R?): List<R> {
         if (x !is CombinedNode<*> || !type.isInstance(x)) {
-            return null
+            return  emptyList()
         }
         @Suppress("UNCHECKED_CAST")
         val cb = x as CombinedNode<T>
@@ -31,13 +31,13 @@ open class UnorderedMatcher<T : Node<T>, R : MatchResult>(
 }
 
 
-open class OrderedMatcher<T : Node<T>, R : MatchResult>(
+open class OrderedMatcher<T : Node<T>, R : Any>(
     val type: Class<out CombinedNode<*>>,
     open val children: List<Matcher<T, R>>
 ) : CombinedMatcher<T, R> {
-    override fun match(x: T, previousResult: R?): R? {
+    override fun match(x: T, previousResult: R?): List<R> {
         if (x !is CombinedNode<*> || !type.isInstance(x)) {
-            return null
+            return emptyList()
         }
         @Suppress("UNCHECKED_CAST")
         val cb = x as CombinedNode<T>
@@ -45,13 +45,13 @@ open class OrderedMatcher<T : Node<T>, R : MatchResult>(
     }
 }
 
-open class UnaryMatcher<T : Node<T>, R : MatchResult>(
+open class UnaryMatcher<T : Node<T>, R : Any>(
     val type: Class<out CombinedNode<*>>,
     val subMatcher: Matcher<T, R>
 ) : CombinedMatcher<T,R>{
-    override fun match(x: T, previousResult: R?): R? {
+    override fun match(x: T, previousResult: R?): List<R>{
         if (x !is CombinedNode<*> || !type.isInstance(x)) {
-            return null
+            return emptyList()
         }
         @Suppress("UNCHECKED_CAST")
         val cb = x as CombinedNode<T>

@@ -268,5 +268,7 @@ class RefFormulaContext(val formulas: FMap, termContext: RefTermContext) :
     val String.tr: Term
         get() = termContext.termRef(this)
 
-
+    fun unusedVar() : Term{
+        return termContext.unusedVar()
+    }
 }

@@ -11,21 +11,26 @@ import cn.ancono.mpf.core.Node
  * Provides some utilities for matcher.
  */
 object MatcherUtil {
-    fun <T : Node<T>, R : MatchResult> unorderedMatch(
-        node: CombinedNode<T>, matchers: List<Matcher<T, R>>, fallback: Matcher<T, R>, previousResult : R?
-    ): R? {
+    fun <T : Node<T>, R : Any> unorderedMatch(
+        node: CombinedNode<T>, matchers: List<Matcher<T, R>>, fallback: Matcher<T, R>, previousResult: R?
+    ): List<R> {
         if (node.childCount < matchers.size) {
-            return null
+            return emptyList()
         }
         val nodes = node.children
         val remains = BooleanArray(nodes.size) { true }
-        fun recurMatch(n: Int, currentResult: R?): R? {
+        val allResults = arrayListOf<R>()
+        fun recurMatch(n: Int, currentResult: R?) {
             if (n >= matchers.size) {
                 if (remains.any { it }) {
                     val remainPart = node.copyOf(nodes.filterIndexed { index, _ -> remains[index] })
-                    return fallback.match(remainPart, currentResult)
+                    allResults.addAll(fallback.match(remainPart, currentResult))
+                } else {
+                    if (currentResult != null) {
+                        allResults += currentResult
+                    }
                 }
-                return currentResult
+                return
             }
             val matcher = matchers[n]
             for (i in remains.indices) {
@@ -33,29 +38,32 @@ object MatcherUtil {
                     continue
                 }
                 val t = nodes[i]
-                val result = matcher.match(t, currentResult) ?: continue
-                remains[i] = false
-                val result2 = recurMatch(n + 1, result)
-                remains[i] = true
-                if (result2 != null) {
-                    return result2
+                val results = matcher.match(t, currentResult)
+                for (r in results) {
+                    remains[i] = false
+                    recurMatch(n + 1, r)
+                    remains[i] = true
                 }
             }
-            return null
         }
-        return recurMatch(0, previousResult)
+        recurMatch(0, previousResult)
+        return allResults
     }
 
-    fun <T : Node<T>, R : MatchResult> unorderedMatch(
-        nodes: List<T>, matchers: List<Matcher<T, R>>, previousResult : R?
-    ): R? {
+    fun <T : Node<T>, R : Any> unorderedMatch(
+        nodes: List<T>, matchers: List<Matcher<T, R>>, previousResult: R?
+    ): List<R> {
         if (nodes.size != matchers.size) {
-            return null
+            return emptyList()
         }
         val remains = BooleanArray(nodes.size) { true }
-        fun recurMatch(n: Int, currentResult: R?): R? {
+        val allResults = arrayListOf<R>()
+        fun recurMatch(n: Int, currentResult: R?) {
             if (n >= matchers.size) {
-                return currentResult
+                if (currentResult != null) {
+                    allResults.add(currentResult)
+                }
+                return
             }
             val matcher = matchers[n]
             for (i in remains.indices) {
@@ -63,36 +71,43 @@ object MatcherUtil {
                     continue
                 }
                 val t = nodes[i]
-                val result = matcher.match(t, currentResult) ?: continue
-                remains[i] = false
-                val result2 = recurMatch(n + 1, result)
-                remains[i] = true
-                if (result2 != null) {
-                    return result2
+                val results = matcher.match(t, currentResult)
+                for (r in results) {
+                    remains[i] = false
+                    recurMatch(n + 1, r)
+                    remains[i] = true
                 }
             }
-            return null
         }
-        return recurMatch(0, previousResult)
+        recurMatch(0, previousResult)
+        return allResults
     }
 
-    fun <T : Node<T>, R : MatchResult> orderedMatch(
+    fun <T : Node<T>, R : Any> orderedMatch(
         node: CombinedNode<T>,
         matchers: List<Matcher<T, R>>,
-        previousResult : R?
-    ): R? {
-        return node.children.zip(matchers).fold(previousResult) { re, (n, m) ->
-            m.match(n, re)
-        }
+        previousResult: R?
+    ): List<R> {
+        return orderedMatch(node.children,matchers,previousResult)
     }
 
-    fun <T : Node<T>, R : MatchResult> orderedMatch(
+    fun <T : Node<T>, R : Any> orderedMatch(
         nodes: List<T>,
         matchers: List<Matcher<T, R>>,
-        previousResult : R?
-    ): R? {
-        return nodes.zip(matchers).fold(previousResult) { re, (n, m) ->
-            m.match(n, re)
+        previousResult: R?
+    ): List<R> {
+        var results = if (previousResult != null) {
+            listOf(previousResult)
+        } else {
+            emptyList()
         }
+        for ((n, m) in nodes.zip(matchers)) {
+            val r = m.matchAll(n,results)
+            if (r.isEmpty()) {
+                return emptyList()
+            }
+            results = r
+        }
+        return results
     }
 }
