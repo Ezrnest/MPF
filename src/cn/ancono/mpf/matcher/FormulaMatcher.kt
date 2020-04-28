@@ -5,8 +5,8 @@ import cn.ancono.mpf.builder.RefTermContext
 import cn.ancono.mpf.core.*
 
 
-typealias FMap = Map<String, Formula>
-typealias TMap = Map<String, Term>
+typealias FMap = Map<String, RefFormula>
+typealias TMap = Map<String, RefTerm>
 
 
 /*
@@ -50,6 +50,8 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
             }
         }
     }
+
+
 }
 
 
@@ -69,8 +71,24 @@ class FormulaResult(
             RefTermContext(varMap)
         )
 
-    override fun toString(): String {
-        return "Formulas: $formulaMap, Variables: $varMap"
+    override fun toString(): String = buildString {
+        append("Formulas: ")
+        formulaMap.entries.joinTo(this, ",", "{", "}") { (k, v) ->
+            if (v.isClosed) {
+                "$k=$v"
+            } else {
+                k + v.parameters.joinToString(",", prefix = "(", postfix = ")") { it.name } + "=${v.formula}"
+            }
+        }
+        append(", Variables: ")
+        varMap.entries.joinTo(this, ",", "{", "}") { (k, v) ->
+            if (v.isClosed) {
+                "$k=$v"
+            } else {
+                k + v.parameters.joinToString(",", prefix = "(", postfix = ")") { it.name } + "=${v.term}"
+            }
+        }
+//        return "Formulas: $formulaMap, Variables: $varMap"
     }
 }
 
@@ -105,25 +123,204 @@ object EmptyMatcher : FormulaMatcher {
     override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult> {
         return emptyList()
     }
-    //    override fun matchSingle(x: Formula, previousResult: FormulaResult?): FormulaResults? {
-//        return null
-//    }
 }
 
-class RefFormulaMatcher(val name: String) : FormulaMatcher, AtomicMatcher<Formula, FormulaResult> {
-
+object WildcardMatcher : FormulaMatcher {
     override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult> {
-        val (formulaMap, varMap) = previousResult.destructed
+        return if (previousResult == null) {
+            listOf(FormulaResult(emptyMap(), emptyMap()))
+        } else {
+            listOf(previousResult)
+        }
+    }
+}
+
+class SimpleRefFormulaMatcher(val name: String) : FormulaMatcher, AtomicMatcher<Formula, FormulaResult> {
+    override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult> {
+        val formulaMap = previousResult?.formulaMap ?: emptyMap()
+        val varMap = previousResult?.varMap ?: emptyMap()
         val required = formulaMap[name]
         return if (required == null) {
-            listOf(FormulaResult(formulaMap + (name to x), varMap))
+            listOf(FormulaResult(formulaMap + (name to RefFormula(x)), varMap))
         } else {
-            if (required.isIdentityTo(x)) {
+            if (x.isIdentityTo(required.formula)) {
                 listOf(FormulaResult(formulaMap, varMap))
             } else {
                 emptyList()
             }
         }
+    }
+}
+
+class VarRefFormulaMatcher(
+    val name: String,
+    val varNames: List<String> = emptyList(),
+    val sub: FormulaMatcher = WildcardMatcher
+) : FormulaMatcher, AtomicMatcher<Formula, FormulaResult> {
+
+    init {
+        require(MatcherUtil.isDistinct(varNames)) {
+            "Variable names must be distinct!"
+        }
+    }
+
+    private fun buildReferredAndRemains(varMap: TMap): Pair<MutableMap<String, Term>, MutableList<String>> {
+        val referred = hashMapOf<String, Term>()
+        val remains = ArrayList<String>(varNames.size)
+        for (v in varNames) {
+            val ref = varMap[v]
+            if (ref != null) {
+                referred[v] = ref.build(varMap)
+//                require(t is VarTerm){
+//                    "Only variable reference is supported now!"
+//                }
+            } else {
+                remains.add(v)
+            }
+        }
+        return referred to remains
+    }
+
+    private fun matchRequired(
+        x: Formula, required: RefFormula,
+        formulaMap: FMap, varMap: TMap
+    ): List<FormulaResult> {
+        /*
+        Required: P(x1,x2,...,xn)
+        x:        Q(y1,y2,...,yn)
+
+         */
+        val (reference, remains) = buildReferredAndRemains(varMap)
+        val referred = reference.values.mapTo(hashSetOf()){
+            require(it is VarTerm) {
+                "Only variable reference is supported now."
+            }
+            it.v
+        }
+//        val referred = reference.forEach { (key, value) ->
+//            require(value is VarTerm) {
+//                "Only variable reference is supported now."
+//            }
+//            referred.add(value.v)
+//            current[key] = value.v
+//        }
+        val free = (x.variables - referred).toList()
+        if (free.size != remains.size) {
+            return emptyList()
+        }
+        val results = arrayListOf<FormulaResult>()
+        fun recurMatch(i: Int, current: MutableMap<String, Term>) {
+            if (i >= remains.size) {
+                val f = required.build(varNames.map {
+                    current[it]!!
+                })
+                if (x.isIdentityTo(f)) {
+                    val nVarMap = hashMapOf<String, RefTerm>()
+                    nVarMap.putAll(varMap)
+                    for (en in current) {
+                        nVarMap[en.key] = RefTerm(en.value)
+                    }
+                    val result = FormulaResult(formulaMap, nVarMap)
+                    results += result
+                }
+                return
+            }
+            val r = remains[i]
+            for (f in free) {
+                current[r] = VarTerm(f)
+                recurMatch(i + 1, current)
+            }
+        }
+        recurMatch(0, reference)
+        return results
+    }
+
+    private fun matchFree(
+        x: Formula,
+        formulaMap: FMap, varMap: TMap
+    ): List<FormulaResult> {
+        val (reference, remains) = buildReferredAndRemains(varMap)
+        val referred = hashSetOf<Variable>()
+        val current = hashMapOf<String, Variable>()
+        reference.forEach { (key, value) ->
+            require(value is VarTerm) {
+                "Only variable reference is supported now."
+            }
+            referred.add(value.v)
+            current[key] = value.v
+        }
+
+        val free = (x.variables - referred).toList()
+
+        val choosen = BooleanArray(free.size) { false }
+
+        val results = arrayListOf<FormulaResult>()
+        fun recurMatch(i: Int) {
+            if (i < remains.size) {
+                val v = remains[i]
+                for ((j, f) in free.withIndex()) {
+                    if (choosen[j]) {
+                        continue
+                    }
+                    current[v] = f
+                    recurMatch(i + 1)
+                }
+            }
+
+            val nVarMap = hashMapOf<String, RefTerm>()
+            nVarMap.putAll(varMap)
+            for (en in current) {
+                nVarMap[en.key] = RefTerm(VarTerm(en.value))
+            }
+
+            val namer = Variable.getXNNameProvider("x").iterator()
+            val parameters = varNames.map<String, Variable> {
+                val n = current[it]
+                if (n != null) {
+                    return@map n
+                }
+                //we need to find a proper name for the unreferenced variables
+                var v = Variable(it)
+                if (v !in x.allVariables) {
+                    return@map v
+                }
+                while (true) {
+                    v = namer.next()
+                    if (v !in x.allVariables) {
+                        break
+                    }
+                }
+                v
+            }
+            val nFormulaMap = formulaMap + (name to RefFormula(x, varNames.size, parameters))
+            val result = FormulaResult(nFormulaMap, nVarMap)
+            results.addAll(sub.match(x, result))
+        }
+        recurMatch(0)
+        return results
+    }
+
+    override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult> {
+        val (formulaMap, varMap) = previousResult.destructed
+        val required = formulaMap[name]
+
+
+        if (required != null) {
+            //already matched
+            return matchRequired(x, required, formulaMap, varMap)
+        } else {
+            return matchFree(x, formulaMap, varMap)
+        }
+
+//        return if (required == null) {
+//            listOf(FormulaResult(formulaMap + (name to x), varMap))
+//        } else {
+//            if (required.isIdentityTo(x)) {
+//                listOf(FormulaResult(formulaMap, varMap))
+//            } else {
+//                emptyList()
+//            }
+//        }
     }
 }
 
@@ -133,7 +330,7 @@ class NamedFormulaMatcher(val name: QualifiedName) :
         val (formulaMap, varMap) = previousResult.destructed
         return if (x is NamedFormula && x.name == name) {
             listOf(FormulaResult(formulaMap, varMap))
-        }else{
+        } else {
             emptyList()
         }
     }
@@ -201,9 +398,9 @@ open class QualifiedFormulaMatcher(
         }
         val variable = x.v
         val (formulaMap, varMap) = previousResult.destructed
-        val nVarMap = varMap + (varName to VarTerm(variable))
+        val nVarMap = varMap + (varName to RefTerm(VarTerm(variable)))
         val res = sub.match(x.child, FormulaResult(formulaMap, nVarMap))
-        return res.map {re ->
+        return res.map { re ->
             val (m1, m2) = re.destructed
             val original = varMap[varName]
             val m3 = m2.toMutableMap()

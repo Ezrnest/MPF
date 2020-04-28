@@ -28,7 +28,7 @@ abstract class TermBuilderContext {
     fun constance(name: QualifiedName): Term =
         ConstTerm(Constance(name))
 
-    fun named(name: QualifiedName, vararg parameters: Variable): Term =
+    fun named(name: QualifiedName, vararg parameters: Term): Term =
         NamedTerm(name, parameters.toList())
 
     open operator fun String.invoke(vararg terms: Term): Term {
@@ -75,7 +75,7 @@ object SimpleTermContext : TermBuilderContext() {
 
 class RefTermContext(val context: TMap) : TermBuilderContext() {
 
-    val usedVariables = context.values.flatMapTo(hashSetOf()) { it.variables }
+    val usedVariables = context.values.flatMapTo(hashSetOf()) { it.parameters }
 
 
     @JvmField
@@ -94,7 +94,8 @@ class RefTermContext(val context: TMap) : TermBuilderContext() {
         get() = termRef(this)
 
     fun termRef(name: String): Term {
-        return context[name] ?: throw NoSuchElementException("No term named `$name`")
+        val t =  context[name] ?: throw NoSuchElementException("No term named `$name`")
+        return t.build(context)
     }
 
     fun unusedVar(): Term {

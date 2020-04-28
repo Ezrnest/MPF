@@ -2,6 +2,8 @@ package test
 
 import cn.ancono.mpf.core.Variable
 import cn.ancono.mpf.builder.buildFormula
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 
 /*
@@ -36,13 +38,30 @@ object FormulaTest {
         val g = buildFormula {
             forAny(y) { exist(x) { y belongTo x } }
         }
-        println(f)
-        println(g)
-        println(f.isIdentityTo(g))
+//        println(f)
+//        println(g)
+        assertTrue {
+            f.isIdentityTo(g)
+        }
+    }
+    fun test3(){
+        val f = buildFormula {
+            (a equalTo a) and forAny(a){
+                a equalTo a
+            }
+        }
+        val expected = buildFormula {
+            (b equalTo b) and forAny(a){
+                a equalTo a
+            }
+        }
+        assertTrue {
+            expected.isIdentityTo(f.renameVar(mapOf(Variable("a") to Variable("b"))))
+        }
     }
 
 }
 
 fun main() {
-    FormulaTest.test2()
+    FormulaTest.test3()
 }

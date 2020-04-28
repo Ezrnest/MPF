@@ -1,8 +1,7 @@
 package test
 
 import cn.ancono.mpf.builder.buildFormula
-import cn.ancono.mpf.core.QualifiedName
-import cn.ancono.mpf.core.Variable
+import cn.ancono.mpf.matcher.VarRefFormulaMatcher
 import cn.ancono.mpf.matcher.buildMatcher
 
 
@@ -72,27 +71,48 @@ object MatcherTest {
 
     fun test4() {
         val f = buildFormula {
-            forAny(x) {
-                named(QualifiedName("P"), Variable("x"))
-            }
+            forAny(x) { x equalTo x } and forAny(y) { y equalTo y }
         }
         val matcher = buildMatcher {
-            forAny(x) {
-                TODO()
-            }
+            forAny(x) { phi(x) } and forAny(x) { phi(x) }
         }
-//        val re = matcher.match(f)
-//        println(re)
-//
-//        val replaced = matcher.replaceAll(f){
-//            val x = unusedVar()
-//            val y = unusedVar()
-//
-//        }
+
+        val re = matcher.match(f)
+        re.forEach { println(it) }
     }
 
+
+    fun test5() {
+        val f = buildFormula {
+            forAny(x) { x equalTo x } and (a equalTo a)
+        }
+        val matcher = buildMatcher {
+            forAny(x) { phi(x) } and phi(y)
+        }
+
+        val re = matcher.match(f)
+        re.forEach { println(it) }
+    }
+
+
+    fun test6() {
+        val f = buildFormula {
+            forAny(a) { exist(b) {
+                (a equalTo b) implies (a equalTo b)
+            } }
+        }
+        println(f)
+        val matcher = buildMatcher {
+            forAny(x){ exist(y){
+                phi(x,y) implies (x equalTo y)
+            } }
+        }
+
+        val re = matcher.match(f)
+        re.forEach { println(it) }
+    }
 }
 
 fun main() {
-    MatcherTest.test3()
+    MatcherTest.test6()
 }

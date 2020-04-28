@@ -5,7 +5,7 @@ package cn.ancono.mpf.core
  * Describes a term in the
  * Created by liyicheng at 2020-04-04 18:53
  */
-abstract class Term : Node<Term> {
+abstract class Term : Node<Term>{
     abstract val variables: Set<Variable>
 
     abstract override val childCount: Int
@@ -40,7 +40,7 @@ abstract class Term : Node<Term> {
      */
     abstract fun recurMap(before: (Term) -> Term?, after: (Term) -> Term): Term
 
-    abstract fun renameVar(renamer : (Variable)->Variable): Term
+    open fun renameVar(renamer : (Variable)->Variable): Term = replaceVar { VarTerm(renamer(it)) }
 
     open fun renameVar(nameMap: Map<Variable, Variable>): Term = renameVar { nameMap.getOrDefault(it,it) }
 
@@ -48,6 +48,10 @@ abstract class Term : Node<Term> {
         nameMap: MutableMap<Variable, Variable>,
         nameProvider: Iterator<Variable>
     ): Term
+
+    abstract fun replaceVar(replacer: (Variable) -> Term) : Term
+
+    fun replaceVar(replaceMap: Map<Variable, Term>): Term = replaceVar { replaceMap.getOrDefault(it, VarTerm(it)) }
 }
 
 abstract class AtomicTerm : Term(), AtomicNode<Term> {
@@ -94,6 +98,10 @@ class VarTerm(val v: Variable) : AtomicTerm() {
         return VarTerm(nv)
     }
 
+    override fun replaceVar(replacer: (Variable) -> Term): Term {
+        return replacer(v)
+    }
+
     override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Term {
         var nv = nameMap[v]
         return if (nv != null) {
@@ -104,6 +112,7 @@ class VarTerm(val v: Variable) : AtomicTerm() {
             VarTerm(nv)
         }
     }
+
 }
 
 class ConstTerm(val c: Constance) : AtomicTerm() {
@@ -122,44 +131,45 @@ class ConstTerm(val c: Constance) : AtomicTerm() {
         return this
     }
 
+    override fun replaceVar(replacer: (Variable) -> Term): Term {
+        return this
+    }
+
     override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Term {
         return this
     }
 }
 
-class NamedTerm(val name: QualifiedName, val parameters: List<Variable>) : AtomicTerm() {
-    override val variables: Set<Variable> = parameters.toSet()
+class NamedTerm(val name: QualifiedName, val parameters: List<Term>) : AtomicTerm() {
+    override val variables: Set<Variable> = parameters.flatMapTo(hashSetOf()){it.variables}
     override fun isIdentityTo(t: Term): Boolean {
-        return t is NamedTerm && name == t.name && parameters == t.parameters
+        return t is NamedTerm && name == t.name && Utils.collectionEquals(parameters,t.parameters,Term::isIdentityTo)
     }
 
     override fun toString(): String {
         if (parameters.isEmpty()) {
             return name.displayName
         }
-        return name.displayName + parameters.joinToString(",", prefix = "(", postfix = ")") { it.name }
+        return name.displayName + parameters.joinToString(",", prefix = "(", postfix = ")")
     }
 
     override fun renameVar(nameMap: Map<Variable, Variable>): Term {
         if (variables.any { it in nameMap }) {
-            return NamedTerm(name, parameters.map { nameMap.getOrDefault(it, it) })
+            return NamedTerm(name, parameters.map { it.renameVar(nameMap) })
         }
         return this
     }
 
-    override fun renameVar(renamer: (Variable) -> Variable): Term {
-        return NamedTerm(name, parameters.map(renamer))
+//    override fun renameVar(renamer: (Variable) -> Variable): Term {
+//        return NamedTerm(name, parameters.map { it.renameVar(renamer)})
+//    }
+
+    override fun replaceVar(replacer: (Variable) -> Term): Term {
+        return NamedTerm(name, parameters.map { it.replaceVar(replacer)})
     }
 
     override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Term {
-        val nParameters = parameters.map<Variable,Variable> {v ->
-            var nv = nameMap[v]
-            if (nv == null) {
-                nv = nameProvider.next()
-                nameMap[v] = nv
-            }
-            nv
-        }
+        val nParameters = parameters.map { it.regularizeVarName(nameMap, nameProvider) }
         return NamedTerm(name,nParameters)
     }
 }
@@ -177,8 +187,8 @@ abstract class CombinedTerm(override val children: List<Term>) : Term(), Combine
         return this
     }
 
-    override fun renameVar(renamer: (Variable) -> Variable): Term {
-        return copyOf(children.map { it.renameVar(renamer) })
+    override fun replaceVar(replacer: (Variable) -> Term): Term {
+        return copyOf(children.map { it.replaceVar(replacer) })
     }
 
     override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Term {

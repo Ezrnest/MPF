@@ -1,6 +1,7 @@
 package cn.ancono.mpf.matcher
 
 import cn.ancono.mpf.core.CombinedNode
+import cn.ancono.mpf.core.Formula
 import cn.ancono.mpf.core.Node
 
 
@@ -110,4 +111,19 @@ object MatcherUtil {
         }
         return results
     }
+
+    fun <T> isDistinct(list : List<T>) : Boolean{
+        val set = hashSetOf<T>()
+        for (x in list) {
+            if (x in set) {
+                return false
+            }
+            set += x
+        }
+        return true
+    }
+
+//    fun formulaToMatcher(f : Formula) : FormulaMatcher{
+//
+//    }
 }

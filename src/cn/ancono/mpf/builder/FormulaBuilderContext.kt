@@ -42,7 +42,7 @@ open class FormulaBuilderContext<T : TermBuilderContext>(
     val String.n: NamedFormula
         get() = named(QualifiedName(this))
 
-    fun named(name: QualifiedName, vararg parameters: Variable): NamedFormula {
+    fun named(name: QualifiedName, vararg parameters: Term): NamedFormula {
         return NamedFormula(name, parameters.toList())
     }
 
@@ -250,7 +250,8 @@ class RefFormulaContext(val formulas: FMap, termContext: RefTermContext) :
         get() = "R".fr
 
     fun refNonNull(name: String): Formula {
-        return formulas[name] ?: throw NoSuchElementException("No formula named `$name`")
+        val f = formulas[name] ?: throw NoSuchElementException("No formula named `$name`")
+        return f.build(termContext.context)
     }
 
 
@@ -259,7 +260,7 @@ class RefFormulaContext(val formulas: FMap, termContext: RefTermContext) :
     }
 
     fun ref(name: String): Formula? {
-        return formulas[name]
+        return formulas[name]?.build(termContext.context)
     }
 
     val String.fr: Formula
@@ -268,7 +269,7 @@ class RefFormulaContext(val formulas: FMap, termContext: RefTermContext) :
     val String.tr: Term
         get() = termContext.termRef(this)
 
-    fun unusedVar() : Term{
+    fun unusedVar(): Term {
         return termContext.unusedVar()
     }
 }
