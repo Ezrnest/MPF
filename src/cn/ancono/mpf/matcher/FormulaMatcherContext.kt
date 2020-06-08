@@ -31,7 +31,7 @@ object FormulaMatcherContext {
         get() = FixedVarTermMatcher(Variable(this))
 
     val String.c
-        get() = FixedConstTermMatcher(Constance(QualifiedName(this)))
+        get() = FixedConstTermMatcher(Constant(QualifiedName(this)))
 
     @JvmField
     val P = "P".ref
@@ -166,23 +166,23 @@ object FormulaMatcherContext {
 
     fun exist(variable: String, f: FormulaMatcher): FormulaMatcher = ExistFormulaMatcher(variable, f)
 
-    fun exist(variable: String, builderAction: FormulaMatcherContext.() -> FormulaMatcher): FormulaMatcher =
-        exist(variable, builderAction(this))
+    fun exist(variable: String, builderAction: () -> FormulaMatcher): FormulaMatcher =
+        exist(variable, builderAction())
 
 
     fun exist(variable: RefTermMatcher, f: FormulaMatcher): FormulaMatcher = ExistFormulaMatcher(variable.refName, f)
 
-    fun exist(variable: RefTermMatcher, builderAction: FormulaMatcherContext.() -> FormulaMatcher): FormulaMatcher =
-        exist(variable, builderAction(this))
+    fun exist(variable: RefTermMatcher, builderAction: () -> FormulaMatcher): FormulaMatcher =
+        exist(variable, builderAction())
 
     fun forAny(variable: String, f: FormulaMatcher): FormulaMatcher = ForAnyFormulaMatcher(variable, f)
 
-    fun forAny(variable: String, builderAction: FormulaMatcherContext.() -> FormulaMatcher): FormulaMatcher =
-        forAny(variable, builderAction(this))
+    fun forAny(variable: String, builderAction: () -> FormulaMatcher): FormulaMatcher =
+        forAny(variable, builderAction())
 
     fun forAny(variable: RefTermMatcher, f: FormulaMatcher): FormulaMatcher = ForAnyFormulaMatcher(variable.refName, f)
 
-    fun forAny(variable: RefTermMatcher, builderAction: FormulaMatcherContext.() -> FormulaMatcher): FormulaMatcher =
-        forAny(variable, builderAction(this))
+    fun forAny(variable: RefTermMatcher, builderAction: () -> FormulaMatcher): FormulaMatcher =
+        forAny(variable, builderAction())
 
 }

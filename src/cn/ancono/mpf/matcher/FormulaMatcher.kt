@@ -16,7 +16,21 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
 //    fun fullMatches(f: Formula, formulaMap: FMap = emptyMap(), varMap: TMap = emptyMap()): FullFormulaMatchResult?
 
     //    fun partMatches(f: Formula): FormulaMatchResult?
+
+    /**
+     * Determines whether the formula matcher matches exactly the given formula.
+     */
     override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult>
+
+
+    /**
+     * Determines whether this matcher matches the formula or any of its sub-formulas.
+     */
+    fun find(x: Formula): Boolean {
+        return x.recurApply {
+            match(x, null).isNotEmpty()
+        }
+    }
 
 //    {
 //        val results = arrayListOf<FormulaResult>()
@@ -33,10 +47,17 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
 //    }
 
 
-    open fun replaceOne(f: Formula, builderAction: RefFormulaContext.() -> Formula): List<Formula> {
+    open fun replaceOne(f: Formula, builderAction: RefFormulaContext.() -> Formula?): List<Formula> {
         return f.recurMapMulti {
             val res = match(it, null)
-            res.map { re -> re.replace(builderAction) }
+            val result = ArrayList<Formula>(res.size)
+            for (re in res) {
+                val t = re.replace(builderAction)
+                if (t != null) {
+                    result += t
+                }
+            }
+            result
         }
     }
 
@@ -46,7 +67,7 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
             if (re.isEmpty()) {
                 it
             } else {
-                re.first().replace(builderAction)
+                re.first().replaceNonNull(builderAction)
             }
         }
     }
@@ -60,10 +81,16 @@ class FormulaResult(
     val varMap: TMap
 ) : MatchResult {
 
-    fun replace(builderAction: RefFormulaContext.() -> Formula): Formula {
+    fun replace(builderAction: RefFormulaContext.() -> Formula?): Formula? {
+        val context = toBuilderContext()
+        return builderAction(context)?.flatten()
+    }
+
+    fun replaceNonNull(builderAction: RefFormulaContext.() -> Formula) : Formula{
         val context = toBuilderContext()
         return builderAction(context).flatten()
     }
+
 
     fun toBuilderContext(): RefFormulaContext =
         RefFormulaContext(
@@ -90,6 +117,25 @@ class FormulaResult(
         }
 //        return "Formulas: $formulaMap, Variables: $varMap"
     }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as FormulaResult
+
+        if (formulaMap != other.formulaMap) return false
+        if (varMap != other.varMap) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = formulaMap.hashCode()
+        result = 31 * result + varMap.hashCode()
+        return result
+    }
+
 }
 
 val FormulaResult?.destructed: Pair<FMap, TMap>
@@ -152,6 +198,9 @@ class SimpleRefFormulaMatcher(val name: String) : FormulaMatcher, AtomicMatcher<
     }
 }
 
+/**
+ * A reference formula with variable.
+ */
 class VarRefFormulaMatcher(
     val name: String,
     val varNames: List<String> = emptyList(),
@@ -191,7 +240,7 @@ class VarRefFormulaMatcher(
 
          */
         val (reference, remains) = buildReferredAndRemains(varMap)
-        val referred = reference.values.mapTo(hashSetOf()){
+        val referred = reference.values.mapTo(hashSetOf()) {
             require(it is VarTerm) {
                 "Only variable reference is supported now."
             }
@@ -265,6 +314,7 @@ class VarRefFormulaMatcher(
                     current[v] = f
                     recurMatch(i + 1)
                 }
+                return
             }
 
             val nVarMap = hashMapOf<String, RefTerm>()
@@ -305,12 +355,13 @@ class VarRefFormulaMatcher(
         val required = formulaMap[name]
 
 
-        if (required != null) {
+        val r = if (required != null) {
             //already matched
-            return matchRequired(x, required, formulaMap, varMap)
+            matchRequired(x, required, formulaMap, varMap)
         } else {
-            return matchFree(x, formulaMap, varMap)
+            matchFree(x, formulaMap, varMap)
         }
+        return r
 
 //        return if (required == null) {
 //            listOf(FormulaResult(formulaMap + (name to x), varMap))

@@ -53,7 +53,7 @@ class Function(
 
 }
 
-data class Constance(val name: QualifiedName)
+data class Constant(val name: QualifiedName)
 
 /**
  * Describes a structure of first order logic.
@@ -64,8 +64,14 @@ interface Structure {
 
     val functions: Set<Function>
 
-    val constances: Set<Constance>
+    val constants: Set<Constant>
 
+    val rules : Set<Rule>
 }
 
 val EQUAL_PREDICATE = Predicate(2, QualifiedName("equals"))
+
+
+open class BasicStructure{
+
+}

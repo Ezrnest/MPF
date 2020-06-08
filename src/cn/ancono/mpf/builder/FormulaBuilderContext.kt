@@ -1,7 +1,7 @@
 package cn.ancono.mpf.builder
 
 import cn.ancono.mpf.core.*
-import cn.ancono.mpf.matcher.FMap
+import cn.ancono.mpf.matcher.*
 import cn.ancono.mpf.structure.IN_PREDICATE
 
 
@@ -195,6 +195,8 @@ open class FormulaBuilderContext<T : TermBuilderContext>(
         return PredicateFormula(IN_PREDICATE, listOf(this, t))
     }
 
+
+
 }
 
 
@@ -263,13 +265,33 @@ class RefFormulaContext(val formulas: FMap, termContext: RefTermContext) :
         return formulas[name]?.build(termContext.context)
     }
 
+    /**
+     * Formula reference
+     */
     val String.fr: Formula
         get() = refNonNull(this)
 
+    /**
+     * Term reference
+     */
     val String.tr: Term
         get() = termContext.termRef(this)
 
     fun unusedVar(): Term {
         return termContext.unusedVar()
     }
+
+    inner class RefMatcherFunction(val name: String) {
+        operator fun invoke(vararg terms: Term): Formula {
+            val f = this@RefFormulaContext.formulas[name]?: throw NoSuchElementException("No formula named `$name`")
+            return f.build(terms.toList())
+//            return VarRefFormulaMatcher(name, terms.map { (it as RefTermMatcher).refName })
+        }
+    }
+
+    val phi = RefMatcherFunction("phi")
+
+    val rho = RefMatcherFunction("rho")
+
+    val psi = RefMatcherFunction("psi")
 }

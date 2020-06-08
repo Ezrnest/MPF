@@ -99,18 +99,21 @@ object MatcherTest {
         val f = buildFormula {
             forAny(a) { exist(b) {
                 (a equalTo b) implies (a equalTo b)
-            } }
+            } } and (x equalTo x)
         }
         println(f)
         val matcher = buildMatcher {
             forAny(x){ exist(y){
                 phi(x,y) implies (x equalTo y)
-            } }
+            } } and psi(a)
         }
 
         val re = matcher.match(f)
+        println("Results:")
         re.forEach { println(it) }
     }
+
+
 }
 
 fun main() {

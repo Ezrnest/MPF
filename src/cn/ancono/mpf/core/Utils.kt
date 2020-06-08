@@ -1,5 +1,7 @@
 package cn.ancono.mpf.core
 
+import java.util.*
+
 
 /*
  * Created by liyicheng at 2020-04-27 20:35
@@ -45,6 +47,35 @@ object Utils {
             return false
         }
         return recurMatch(0)
+    }
+
+    /**
+     * Compares two collections by their lexicographical order using a comparator.
+     *
+     *
+     * For example, [-5,1] < [-1,2,3] and [1,2,3] < [1,2,3,4]
+     */
+    fun <T> compareCollectionLexi(
+        list1: Collection<T>,
+        list2: Collection<T>,
+        comp: Comparator<T>
+    ): Int {
+        val it1 = list1.iterator()
+        val it2 = list2.iterator()
+        while (it1.hasNext() && it2.hasNext()) {
+            val a = it1.next()
+            val b = it2.next()
+            val com = comp.compare(a, b)
+            if (com != 0) {
+                return com
+            }
+        }
+        if (it1.hasNext()) {
+            return 1
+        }
+        return if (it2.hasNext()) {
+            -1
+        } else 0
     }
 }
 //

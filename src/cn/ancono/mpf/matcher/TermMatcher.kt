@@ -73,7 +73,7 @@ class FixedVarTermMatcher(val variable: Variable) : TermMatcher {
 }
 
 
-class FixedConstTermMatcher(val c: Constance) : TermMatcher {
+class FixedConstTermMatcher(val c: Constant) : TermMatcher {
 
     override val variables: Set<String>
         get() = emptySet()

@@ -60,8 +60,36 @@ object FormulaTest {
         }
     }
 
+    fun testRegularForm(){
+        val f = buildFormula {
+            forAny(x) {
+                exist(y) {
+                    !(x equalTo y)
+                }
+            } and exist(x) {
+                exist(y) {
+                    !(x equalTo y)
+                }
+            }
+        }
+        val g = buildFormula {
+            exist(x) {
+                exist(y) {
+                    !(x equalTo y)
+                }
+            } and forAny(x) {
+                exist(y) {
+                    !(x equalTo y)
+                }
+            }
+        }
+        println(f)
+        println(f.toRegularForm())
+        println(g.toRegularForm())
+    }
+
 }
 
 fun main() {
-    FormulaTest.test3()
+    FormulaTest.testRegularForm()
 }

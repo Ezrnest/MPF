@@ -48,6 +48,17 @@ sealed class Formula : Node<Formula> {
 
 
     /**
+     * Applies the function recursively to each formula nodes in this formula. The order of
+     * iteration is pre-order. The function may return `true` to indicate that the iterating process
+     * should be stopped.
+     *
+     * @param f a function to apply to the sub-nodes and may return `true` to indicate the process should be stopped
+     *
+     * @return `true` if the process should be stopped, `false` to continue.
+     */
+    abstract fun recurApply(f: (Formula) -> Boolean) : Boolean
+
+    /**
      * Performs a 'multi-branch' mapping recursively to this formula. Each formula in the returned list only differs
      * with the original formula by one formula node, which is one of the result of applying [f] to the formula node.
      *
@@ -110,6 +121,46 @@ sealed class Formula : Node<Formula> {
     ): Formula
 
 
+    /**
+     * Converts this formula to the regular form, renaming constrained variables to `$1, $2 ...` and sorting sub-formulas.
+     * This method requires that variables named like `$1` should not appear in the original formula.
+     */
+    open fun toRegularForm(): Formula {
+        return toRegularForm0(1).first
+    }
+
+    /**
+     * @return a regular form and the next variable order
+     */
+    internal abstract fun toRegularForm0(varStart: Int): Pair<Formula, Int>
+
+    internal companion object Helper {
+        val VarNamePattern = Regex("\\$(\\d+)")
+
+        val FormulaPairComp: Comparator<Pair<Formula, Int>> = compareBy(FormulaComparator) {
+            it.first
+        }
+
+        fun renameVarAfter(f: Formula, varStart: Int, newVarStart: Int): Formula {
+            return f.renameAllVar { v ->
+                val name = v.name
+                val re = VarNamePattern.matchEntire(name)
+                if (re != null) {
+                    val (s) = re.destructured
+                    val d = s.toInt()
+                    val nd = if (d >= varStart) {
+                        newVarStart + d - varStart
+                    } else {
+                        d
+                    }
+                    Variable("$$nd")
+                } else {
+                    v
+                }
+            }
+        }
+    }
+
 }
 
 sealed class AtomicFormula : Formula(), AtomicNode<Formula> {
@@ -131,7 +182,9 @@ sealed class AtomicFormula : Formula(), AtomicNode<Formula> {
     override val bracketLevel: Int
         get() = 0
 
-
+    override fun recurApply(f: (Formula) -> Boolean)  :Boolean{
+        return f(this)
+    }
 }
 
 /**
@@ -171,6 +224,12 @@ class PredicateFormula(val p: Predicate, val terms: List<Term>) : AtomicFormula(
     override fun replaceVar(replacer: (Variable) -> Term): Formula {
         return PredicateFormula(p, terms.map { it.replaceVar(replacer) })
     }
+
+    override fun toRegularForm0(varStart: Int): Pair<Formula, Int> {
+        return PredicateFormula(p, terms.map { it.toRegularForm() }) to varStart
+    }
+
+
 }
 
 /**
@@ -232,6 +291,10 @@ class NamedFormula(val name: QualifiedName, val parameters: List<Term> = emptyLi
         val nParameters = parameters.map { it.regularizeVarName(nameMap, nameProvider) }
         return NamedFormula(name, nParameters)
     }
+
+    override fun toRegularForm0(varStart: Int): Pair<Formula, Int> {
+        return NamedFormula(name, parameters.map { it.toRegularForm() }) to varStart
+    }
 }
 
 
@@ -258,6 +321,13 @@ sealed class CombinedFormula(override val children: List<Formula>, val ordered: 
 
 
     abstract override fun copyOf(newChildren: List<Formula>): CombinedFormula
+
+    override fun recurApply(f: (Formula) -> Boolean) : Boolean{
+        if (f(this)) {
+            return true
+        }
+        return children.any(f)
+    }
 
     override fun recurMapMulti(f: (Formula) -> List<Formula>): List<Formula> {
         val possibleChildren = children.map { it.recurMapMulti(f) }
@@ -308,6 +378,7 @@ sealed class UnaryFormula(child: Formula) : CombinedFormula(listOf(child)) {
         return copyOf(children.map(Formula::flatten))
     }
 
+
 }
 
 sealed class BinaryFormula(child1: Formula, child2: Formula, ordered: Boolean) :
@@ -354,6 +425,9 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
         return f1.isIdentityTo(f2)
     }
 
+    /**
+     * Returns a copy of this qualified formula with exactly the given children and the variable.
+     */
     abstract fun copyOf(child: Formula, v: Variable): QualifiedFormula
 
     override fun copyOf(newChildren: List<Formula>): CombinedFormula {
@@ -376,7 +450,7 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
             if (it == v) {
                 v
             } else {
-                renamer(v)
+                renamer(it)
             }
         }
         return copyOf(child.renameVar(newRenamer), v)
@@ -387,7 +461,7 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
             if (it == v) {
                 VarTerm(v)
             } else {
-                replacer(v)
+                replacer(it)
             }
         }
         return copyOf(child.replaceVar(newReplacer), v)
@@ -406,6 +480,20 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
 
     override val bracketLevel: Int
         get() = 20
+
+    override fun toRegularForm0(varStart: Int): Pair<Formula, Int> {
+//        child.t
+        val nv = Variable("$$varStart")
+        val nameReplaced = child.renameVar {
+            if (it == v) {
+                nv
+            } else {
+                it
+            }
+        }
+        val (r, n) = nameReplaced.toRegularForm0(varStart + 1)
+        return copyOf(r, nv) to n
+    }
 }
 
 class NotFormula(child: Formula) : UnaryFormula(child) {
@@ -420,6 +508,12 @@ class NotFormula(child: Formula) : UnaryFormula(child) {
 
     override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
         return NotFormula(child.regularizeVarName(nameMap, nameProvider))
+    }
+
+
+    override fun toRegularForm0(varStart: Int): Pair<Formula, Int> {
+        val (f, n) = child.toRegularForm0(varStart)
+        return NotFormula(f) to n
     }
 }
 
@@ -445,6 +539,17 @@ sealed class MultiFormula(children: List<Formula>) : CombinedFormula(children, f
         get() = 15
 
 
+    override fun toRegularForm0(varStart: Int): Pair<Formula, Int> {
+        val regulars = children.mapTo(sortedSetOf(Helper.FormulaPairComp)) { it.toRegularForm0(varStart) }
+        var vs = varStart
+        val newChildren = ArrayList<Formula>(regulars.size)
+        for ((f, n) in regulars) {
+
+            newChildren += Helper.renameVarAfter(f, varStart, vs)
+            vs += n - varStart
+        }
+        return copyOf(newChildren) to vs
+    }
 }
 
 class AndFormula(children: List<Formula>) : MultiFormula(children) {
@@ -495,6 +600,12 @@ class ImplyFormula(child1: Formula, child2: Formula) : BinaryFormula(child1, chi
     override fun toString(): String {
         return "${wrapBracket(child1)} → ${wrapBracket(child2)}"
     }
+
+    override fun toRegularForm0(varStart: Int): Pair<Formula, Int> {
+        val (c1, n1) = child1.toRegularForm0(varStart)
+        val (c2, n2) = child2.toRegularForm0(n1)
+        return ImplyFormula(c1, c2) to n2
+    }
 }
 
 class EquivalentFormula(child1: Formula, child2: Formula) : BinaryFormula(child1, child2, false) {
@@ -504,6 +615,69 @@ class EquivalentFormula(child1: Formula, child2: Formula) : BinaryFormula(child1
 
     override fun toString(): String {
         return "${wrapBracket(child1)} ↔ ${wrapBracket(child2)}"
+    }
+
+    override fun toRegularForm0(varStart: Int): Pair<Formula, Int> {
+        val (f1, n1) = child1.toRegularForm0(varStart)
+        val (f2, n2) = child2.toRegularForm0(varStart)
+        val c1: Formula
+        val c2: Formula
+        if (FormulaComparator.compare(f1, f2) > 0) {
+            c1 = f2
+            c2 = Helper.renameVarAfter(f1, varStart, n2)
+        } else {
+            c1 = f1
+            c2 = Helper.renameVarAfter(f2, varStart, n1)
+        }
+        return ImplyFormula(c1, c2) to (n1 + n2 - varStart)
+    }
+}
+
+object FormulaComparator : Comparator<Formula> {
+
+    private fun ordinal(f: Formula): Int {
+        return when (f) {
+            is NamedFormula -> 0
+            is PredicateFormula -> 1
+            is NotFormula -> 2
+            is ImplyFormula -> 3
+            is EquivalentFormula -> 4
+            is ForAnyFormula -> 5
+            is ExistFormula -> 6
+            is AndFormula -> 7
+            is OrFormula -> 8
+        }
+    }
+
+    private fun compareNamed(f1: NamedFormula, f2: NamedFormula): Int {
+        return f1.name.compareTo(f2.name)
+    }
+
+    private fun comparePredicate(f1: PredicateFormula, f2: PredicateFormula): Int {
+        val c = f1.p.name.compareTo(f2.p.name)
+        if (c != 0) {
+            return c
+        }
+        return Utils.compareCollectionLexi(f1.terms, f2.terms, Comparator.naturalOrder())
+    }
+
+    /**
+     * Compare two binary formulas of the same type
+     */
+    private fun compareCombined(f1: CombinedFormula, f2: CombinedFormula): Int {
+        return Utils.compareCollectionLexi(f1.children, f2.children, this)
+    }
+
+    override fun compare(f1: Formula, f2: Formula): Int {
+        val c = ordinal(f1) - ordinal(f2)
+        if (c != 0) {
+            return c
+        }
+        return when (f1) {
+            is NamedFormula -> compareNamed(f1, f2 as NamedFormula)
+            is PredicateFormula -> comparePredicate(f1, f2 as PredicateFormula)
+            is CombinedFormula -> compareCombined(f1, f2 as CombinedFormula)
+        }
     }
 }
 

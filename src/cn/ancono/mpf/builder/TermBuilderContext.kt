@@ -26,7 +26,7 @@ abstract class TermBuilderContext {
     }
 
     fun constance(name: QualifiedName): Term =
-        ConstTerm(Constance(name))
+        ConstTerm(Constant(name))
 
     fun named(name: QualifiedName, vararg parameters: Term): Term =
         NamedTerm(name, parameters.toList())
@@ -78,17 +78,19 @@ class RefTermContext(val context: TMap) : TermBuilderContext() {
     val usedVariables = context.values.flatMapTo(hashSetOf()) { it.parameters }
 
 
-    @JvmField
-    val x = "x".ref
+    @get:JvmName("getx")
+    val x
+        get() = "x".ref
 
-    @JvmField
-    val y = "y".ref
+    @get:JvmName("gety")
+    val y
+        get() = "y".ref
 
-    @JvmField
-    val X = "X".ref
+    val X
+        get() = "X".ref
 
-    @JvmField
-    val Y = "Y".ref
+    val Y
+        get() = "Y".ref
 
     val String.ref: Term
         get() = termRef(this)

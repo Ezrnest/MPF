@@ -5,7 +5,7 @@ package cn.ancono.mpf.core
  * Describes a term in the
  * Created by liyicheng at 2020-04-04 18:53
  */
-abstract class Term : Node<Term>{
+abstract class Term : Node<Term>, Comparable<Term> {
     abstract val variables: Set<Variable>
 
     abstract override val childCount: Int
@@ -40,18 +40,21 @@ abstract class Term : Node<Term>{
      */
     abstract fun recurMap(before: (Term) -> Term?, after: (Term) -> Term): Term
 
-    open fun renameVar(renamer : (Variable)->Variable): Term = replaceVar { VarTerm(renamer(it)) }
+    open fun renameVar(renamer: (Variable) -> Variable): Term = replaceVar { VarTerm(renamer(it)) }
 
-    open fun renameVar(nameMap: Map<Variable, Variable>): Term = renameVar { nameMap.getOrDefault(it,it) }
+    open fun renameVar(nameMap: Map<Variable, Variable>): Term = renameVar { nameMap.getOrDefault(it, it) }
 
     abstract fun regularizeVarName(
         nameMap: MutableMap<Variable, Variable>,
         nameProvider: Iterator<Variable>
     ): Term
 
-    abstract fun replaceVar(replacer: (Variable) -> Term) : Term
+    abstract fun replaceVar(replacer: (Variable) -> Term): Term
 
     fun replaceVar(replaceMap: Map<Variable, Term>): Term = replaceVar { replaceMap.getOrDefault(it, VarTerm(it)) }
+
+    abstract fun toRegularForm(): Term
+
 }
 
 abstract class AtomicTerm : Term(), AtomicNode<Term> {
@@ -72,6 +75,10 @@ abstract class AtomicTerm : Term(), AtomicNode<Term> {
 
     override fun recurMap(before: (Term) -> Term?, after: (Term) -> Term): Term {
         return before(this) ?: after(this)
+    }
+
+    override fun toRegularForm(): Term {
+        return this
     }
 }
 
@@ -113,9 +120,16 @@ class VarTerm(val v: Variable) : AtomicTerm() {
         }
     }
 
+
+    override fun compareTo(other: Term): Int {
+        if (other !is VarTerm) {
+            return javaClass.name.compareTo(other.javaClass.name)
+        }
+        return v.name.compareTo(other.v.name)
+    }
 }
 
-class ConstTerm(val c: Constance) : AtomicTerm() {
+class ConstTerm(val c: Constant) : AtomicTerm() {
     override val variables: Set<Variable>
         get() = emptySet()
 
@@ -138,12 +152,19 @@ class ConstTerm(val c: Constance) : AtomicTerm() {
     override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Term {
         return this
     }
+
+    override fun compareTo(other: Term): Int {
+        if (other !is ConstTerm) {
+            return javaClass.name.compareTo(other.javaClass.name)
+        }
+        return c.name.compareTo(other.c.name)
+    }
 }
 
 class NamedTerm(val name: QualifiedName, val parameters: List<Term>) : AtomicTerm() {
-    override val variables: Set<Variable> = parameters.flatMapTo(hashSetOf()){it.variables}
+    override val variables: Set<Variable> = parameters.flatMapTo(hashSetOf()) { it.variables }
     override fun isIdentityTo(t: Term): Boolean {
-        return t is NamedTerm && name == t.name && Utils.collectionEquals(parameters,t.parameters,Term::isIdentityTo)
+        return t is NamedTerm && name == t.name && Utils.collectionEquals(parameters, t.parameters, Term::isIdentityTo)
     }
 
     override fun toString(): String {
@@ -165,12 +186,23 @@ class NamedTerm(val name: QualifiedName, val parameters: List<Term>) : AtomicTer
 //    }
 
     override fun replaceVar(replacer: (Variable) -> Term): Term {
-        return NamedTerm(name, parameters.map { it.replaceVar(replacer)})
+        return NamedTerm(name, parameters.map { it.replaceVar(replacer) })
     }
 
     override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Term {
         val nParameters = parameters.map { it.regularizeVarName(nameMap, nameProvider) }
-        return NamedTerm(name,nParameters)
+        return NamedTerm(name, nParameters)
+    }
+
+    override fun compareTo(other: Term): Int {
+        if (other !is NamedTerm) {
+            return javaClass.name.compareTo(other.javaClass.name)
+        }
+        val c = name.compareTo(other.name)
+        if (c != 0) {
+            return c
+        }
+        return Utils.compareCollectionLexi(this.parameters, other.parameters, Comparator.naturalOrder())
     }
 }
 
@@ -205,7 +237,7 @@ class FunTerm(val f: Function, args: List<Term>) : CombinedTerm(args) {
 
     override fun isIdentityTo(t: Term): Boolean {
         return t is FunTerm && f == t.f &&
-                Utils.collectionEquals(children, t.children,Term::isIdentityTo)
+                Utils.collectionEquals(children, t.children, Term::isIdentityTo)
     }
 
     override fun recurApply(f: (Term) -> Unit) {
@@ -241,4 +273,20 @@ class FunTerm(val f: Function, args: List<Term>) : CombinedTerm(args) {
     }
 
 
+    override fun toRegularForm(): Term {
+        return this // possible implementations
+    }
+
+    override fun compareTo(other: Term): Int {
+        if (other !is FunTerm) {
+            return javaClass.name.compareTo(other.javaClass.name)
+        }
+        val c = f.name.compareTo(other.f.name)
+        if (c != 0) {
+            return c
+        }
+        return Utils.compareCollectionLexi(this.children, other.children, Comparator.naturalOrder())
+    }
 }
+
+
