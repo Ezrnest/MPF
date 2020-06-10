@@ -3,6 +3,7 @@ package cn.ancono.mpf.matcher
 import cn.ancono.mpf.builder.RefFormulaContext
 import cn.ancono.mpf.builder.RefTermContext
 import cn.ancono.mpf.core.*
+import java.lang.UnsupportedOperationException
 
 
 typealias FMap = Map<String, RefFormula>
@@ -61,6 +62,20 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
         }
     }
 
+    fun <T> replaceOneWith(f : Formula, builderAction: RefFormulaContext.() -> Pair<Formula,T>?) : List<Pair<Formula,T>>{
+        return f.recurMapMultiWith {
+            val res = match(it, null)
+            val result = ArrayList<Pair<Formula,T>>(res.size)
+            for (re in res) {
+                val t = re.replaceWith(builderAction)
+                if (t != null) {
+                    result += t
+                }
+            }
+            result
+        }
+    }
+
     open fun replaceAll(f: Formula, builderAction: RefFormulaContext.() -> Formula): Formula {
         return f.recurMap {
             val re = match(it, null)
@@ -73,6 +88,38 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
     }
 
 
+    companion object {
+        fun fromFormula(f: Formula): FormulaMatcher {
+            when (f) {
+                is NamedFormula -> {
+                    return VarRefFormulaMatcher(f.name.fullName, f.parameters.map { t ->
+                        if (t !is VarTerm) {
+                            throw UnsupportedOperationException("Named formula with non-variable term is not supported.")
+                        }
+                        t.v.name
+                    })
+                }
+                is PredicateFormula ->
+                    return PredicateFormulaMatcher(f.p, f.terms.map { TermMatcher.fromTerm(it) }, f.p.ordered)
+                is ForAnyFormula ->
+                    return ForAnyFormulaMatcher(f.v.name, fromFormula(f.child))
+                is ExistFormula ->
+                    return ExistFormulaMatcher(f.v.name, fromFormula(f.child))
+                is NotFormula ->
+                    return NotFormulaMatcher(fromFormula(f.child))
+                is ImplyFormula ->
+                    return ImplyFormulaMatcher(fromFormula(f.child1), fromFormula(f.child2))
+                is EquivalentFormula ->
+                    return EquivalentFormulaMatcher(fromFormula(f.child1), fromFormula(f.child2))
+                is AndFormula ->
+                    return AndFormulaMatcher(f.children.map { fromFormula(it) }, EmptyMatcher)
+                is OrFormula ->
+                    return OrFormulaMatcher(f.children.map { fromFormula(it) }, EmptyMatcher)
+//                else->
+//                    throw UnsupportedOperationException()
+            }
+        }
+    }
 }
 
 
@@ -81,12 +128,23 @@ class FormulaResult(
     val varMap: TMap
 ) : MatchResult {
 
+    fun get(name : String) : Formula{
+        return formulaMap[name]?.formula?:throw NoSuchElementException()
+    }
+
     fun replace(builderAction: RefFormulaContext.() -> Formula?): Formula? {
         val context = toBuilderContext()
         return builderAction(context)?.flatten()
     }
 
-    fun replaceNonNull(builderAction: RefFormulaContext.() -> Formula) : Formula{
+    fun <T> replaceWith(builderAction: RefFormulaContext.() -> Pair<Formula,T>?) : Pair<Formula,T>?{
+        val context = toBuilderContext()
+        val (f,t) = builderAction(context)?:return null
+        return f.flatten() to t
+    }
+
+
+    fun replaceNonNull(builderAction: RefFormulaContext.() -> Formula): Formula {
         val context = toBuilderContext()
         return builderAction(context).flatten()
     }

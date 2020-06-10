@@ -4,8 +4,7 @@ import cn.ancono.mpf.builder.buildFormula
 import cn.ancono.mpf.core.FormulaContext
 import cn.ancono.mpf.core.LogicRules
 import cn.ancono.mpf.core.Reached
-import test.RuleTest.testLogic
-import test.RuleTest.testLogic2
+import test.RuleTest.testLogic3
 import kotlin.test.assertTrue
 
 
@@ -35,10 +34,26 @@ object RuleTest {
             }
         }
         val re = rule.applyToward(FormulaContext(listOf(f)), emptyList(), emptyList(),g)
-        println(re)
+        assertTrue { re is Reached }
     }
+
+    fun testLogic3(){
+        val f = buildFormula {
+            P implies !P
+        }
+        val g = buildFormula {
+            !P or !P
+        }
+        val def = LogicRules.RuleDefImply
+        val re = def.applyToward(FormulaContext(listOf(f)), emptyList(), emptyList(),g)
+        println(re)
+        assertTrue { re is Reached }
+    }
+
 }
 
 fun main() {
-    testLogic2()
+//    testLogic()
+//    testLogic2()
+    testLogic3()
 }

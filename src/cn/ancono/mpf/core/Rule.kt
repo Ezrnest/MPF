@@ -16,7 +16,8 @@ import cn.ancono.mpf.matcher.FormulaMatcher
  */
 interface Rule {
     //    val arguments : List<ArgumentType>
-    val name: String
+    val name: QualifiedName
+
 
     val description: String
 
@@ -31,7 +32,7 @@ interface Rule {
         formulas: List<Formula>,
         terms: List<Term>,
         desiredResult: Formula
-    ): RuleResult
+    ): TowardResult
 
     /**
      * Applies this rule to the given context, formulas and terms, and return a list of possible results of applying
@@ -42,7 +43,7 @@ interface Rule {
         context: FormulaContext,
         formulas: List<Formula>,
         terms: List<Term>
-    ): List<Formula>
+    ): List<Result>
 
 
 //    /**
@@ -53,15 +54,28 @@ interface Rule {
 
 }
 
-sealed class RuleResult
+/**
+ * A result recording the formula reached and context used.
+ */
+class Result(val f : Formula, val dependencies : List<Formula>){
+    override fun toString(): String {
+        return "$f; by $dependencies"
+    }
+}
 
-data class Reached(val result: Formula) : RuleResult()
+sealed class TowardResult
 
-data class NotReached(val results: List<Formula>) : RuleResult()
+
+data class Reached(val result: Result) : TowardResult(){
+    constructor(f : Formula, context : List<Formula>) : this(Result(f,context))
+
+}
+
+data class NotReached(val results: List<Result>) : TowardResult()
 
 
 open class MatcherRule(
-    override val name: String,
+    override val name: QualifiedName,
     override val description: String,
     val matcher: FormulaMatcher, protected val replacer: RefFormulaContext.() -> Formula
 ) : Rule {
@@ -70,47 +84,73 @@ open class MatcherRule(
         formulas: List<Formula>,
         terms: List<Term>,
         desiredResult: Formula
-    ): RuleResult {
-        val allResults = arrayListOf<Formula>()
+    ): TowardResult {
+        val allResults = arrayListOf<Result>()
         val fs = context.formulas
         for (i in fs.lastIndex downTo 0) {
             val f = fs[i]
-            val results = applyOne(f)
-            for (r in results) {
+            val replaced = applyOne(f)
+            for (r in replaced) {
+                val re = Result(desiredResult, listOf(f))
                 if (r.isIdentityTo(desiredResult)) {
-                    return Reached(desiredResult)
+                    return Reached(re)
                 }
+                allResults.add(re)
             }
-            allResults.addAll(results)
         }
         return NotReached(allResults)
     }
 
     protected open fun applyOne(f: Formula): List<Formula> {
-        return matcher.replaceOne(f, replacer) + matcher.replaceAll(f, replacer)
+        val replace1 = matcher.replaceOne(f, replacer)
+        val results = ArrayList<Formula>(replace1.size + 1)
+        results.addAll(replace1)
+        val r = matcher.replaceAll(f, replacer)
+        if (!f.isIdentityTo(r) && results.all { !it.isIdentityTo(r) }) {
+            results.add(r)
+        }
+        return results
     }
 
-    override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Formula> {
-        return context.formulas.flatMap { applyOne(it) }
+    override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Result> {
+        return context.formulas.flatMap {
+            val ctx = listOf(it)
+            applyOne(it).asIterable().map {r ->
+                Result(r,ctx)
+            }
+        }
     }
 }
 
 
-
 open class MatcherDefRule(
-    name: String,
+    name: QualifiedName,
     description: String,
     m1: FormulaMatcher, r1: RefFormulaContext.() -> Formula,
     val m2: FormulaMatcher, private val r2: RefFormulaContext.() -> Formula
-) : MatcherRule(name,description,m1,r1) {
+) : MatcherRule(name, description, m1, r1) {
 
 
     override fun applyOne(f: Formula): List<Formula> {
         val re = arrayListOf<Formula>()
-        re.addAll(matcher.replaceOne(f,replacer))
-        re.add(matcher.replaceAll(f,replacer))
-        re.addAll(m2.replaceOne(f,r2))
-        re.add(m2.replaceAll(f,r2))
+
+        fun replaceAndAdd(m: FormulaMatcher, r: RefFormulaContext.() -> Formula) {
+            for (t in m.replaceOne(f, r)) {
+                if (re.all { !it.isIdentityTo(t) }) {
+                    re.add(t)
+                }
+            }
+            val t = matcher.replaceAll(f, r)
+
+            if (!t.isIdentityTo(f)) {
+                if (re.all { !it.isIdentityTo(t) }) {
+                    re.add(t)
+                }
+                // found
+            }
+        }
+        replaceAndAdd(matcher, replacer)
+        replaceAndAdd(m2, r2)
         return re
     }
 

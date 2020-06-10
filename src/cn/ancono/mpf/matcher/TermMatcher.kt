@@ -2,6 +2,7 @@ package cn.ancono.mpf.matcher
 
 import cn.ancono.mpf.core.*
 import cn.ancono.mpf.core.Function
+import java.lang.UnsupportedOperationException
 
 
 class TermMatchResult(
@@ -17,6 +18,24 @@ fun TermMatchResult?.toNonNull(): TermMatchResult {
 
 interface TermMatcher : Matcher<Term, TermMatchResult> {
     val variables: Set<String>
+
+    companion object {
+        fun fromTerm(t: Term): TermMatcher {
+            return when (t) {
+                is ConstTerm -> {
+                    FixedConstTermMatcher(t.c)
+                }
+                is VarTerm -> {
+                    RefTermMatcher(t.v.name)
+                }
+                is FunTerm -> {
+                    val f = t.f
+                    FunTermMatcher(f, t.children.map { fromTerm(it) }, f.ordered)
+                }
+                else -> throw UnsupportedOperationException("The term type '${t.javaClass.name}' is not supported.")
+            }
+        }
+    }
 }
 
 object EmptyTermMatcher : TermMatcher {
@@ -44,7 +63,6 @@ class RefTermMatcher(val refName: String) : TermMatcher {
 
 
     override fun match(x: Term, previousResult: TermMatchResult?): List<TermMatchResult> {
-        //TODO
         val varMap = previousResult?.varMap ?: emptyMap()
         val required = varMap[refName]
         return if (required == null) {
@@ -128,3 +146,5 @@ class FunTermMatcher(val function: Function, val subMatchers: List<TermMatcher>,
     override val variables: Set<String> by lazy { subMatchers.flatMapTo(hashSetOf()) { it.variables } }
 }
 
+//class NamedTermMatcher(val name : QualifiedName)
+// TODO

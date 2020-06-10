@@ -84,8 +84,8 @@ object FormulaTest {
             }
         }
         println(f)
-        println(f.toRegularForm())
-        println(g.toRegularForm())
+        println(f.regularForm)
+        println(g.regularForm)
     }
 
 }

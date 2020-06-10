@@ -5,7 +5,7 @@ package cn.ancono.mpf.core
  * Describes a term in the
  * Created by liyicheng at 2020-04-04 18:53
  */
-abstract class Term : Node<Term>, Comparable<Term> {
+sealed class Term : Node<Term>, Comparable<Term> {
     abstract val variables: Set<Variable>
 
     abstract override val childCount: Int

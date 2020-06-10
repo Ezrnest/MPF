@@ -1,6 +1,8 @@
 package cn.ancono.mpf.core
 
 import cn.ancono.mpf.builder.RefFormulaContext
+import cn.ancono.mpf.builder.SimpleFormulaContext
+import cn.ancono.mpf.builder.buildFormula
 import cn.ancono.mpf.matcher.FormulaMatcher
 import cn.ancono.mpf.matcher.FormulaMatcherContext
 import cn.ancono.mpf.matcher.buildMatcher
@@ -17,21 +19,21 @@ interface LogicRule : Rule {
         formulas: List<Formula>,
         terms: List<Term>,
         desiredResult: Formula
-    ): RuleResult
+    ): TowardResult
 
     override fun applyToward(
         context: FormulaContext,
         formulas: List<Formula>,
         terms: List<Term>,
         desiredResult: Formula
-    ): RuleResult {
-        return applyIncremental(context, context.regularForms, formulas, terms, desiredResult)
+    ): TowardResult {
+        return applyIncremental(context, context.regularForms.navigableKeySet(), formulas, terms, desiredResult)
     }
 
 }
 
 open class LogicMatcherRule(
-    name: String,
+    name: QualifiedName,
     description: String,
     matcher: FormulaMatcher,
     replacer: RefFormulaContext.() -> Formula
@@ -42,14 +44,18 @@ open class LogicMatcherRule(
         formulas: List<Formula>,
         terms: List<Term>,
         desiredResult: Formula
-    ): RuleResult {
-        val results = arrayListOf<Formula>()
+    ): TowardResult {
+        val results = arrayListOf<Result>()
         for (f in obtained) {
-            val r = applyOne(f)
-            if (r.any { it.isIdentityTo(desiredResult) }) {
-                return Reached(desiredResult)
+            val replaced = applyOne(f)
+            val ctx = listOf(f)
+            for (g in replaced) {
+                val re = Result(g, ctx)
+                if (g.isIdentityTo(desiredResult)) {
+                    return Reached(desiredResult, ctx)
+                }
+                results.add(re)
             }
-            results.addAll(r)
         }
         return NotReached(results)
     }
@@ -59,13 +65,13 @@ open class LogicMatcherRule(
         formulas: List<Formula>,
         terms: List<Term>,
         desiredResult: Formula
-    ): RuleResult {
-        return applyIncremental(context, context.regularForms, formulas, terms, desiredResult)
+    ): TowardResult {
+        return applyIncremental(context, context.regularForms.navigableKeySet(), formulas, terms, desiredResult)
     }
 }
 
 open class LogicDefRule(
-    name: String,
+    name: QualifiedName,
     description: String,
     m1: FormulaMatcher,
     r1: RefFormulaContext.() -> Formula,
@@ -78,14 +84,18 @@ open class LogicDefRule(
         formulas: List<Formula>,
         terms: List<Term>,
         desiredResult: Formula
-    ): RuleResult {
-        val results = arrayListOf<Formula>()
+    ): TowardResult {
+        val results = arrayListOf<Result>()
         for (f in obtained) {
-            val r = applyOne(f)
-            if (r.any { it.isIdentityTo(desiredResult) }) {
-                return Reached(desiredResult)
+            val replaced = applyOne(f)
+            val ctx = listOf(f)
+            for (g in replaced) {
+                val re = Result(g, ctx)
+                if (g.isIdentityTo(desiredResult)) {
+                    return Reached(desiredResult, ctx)
+                }
+                results.add(re)
             }
-            results.addAll(r)
         }
         return NotReached(results)
     }
@@ -95,8 +105,8 @@ open class LogicDefRule(
         formulas: List<Formula>,
         terms: List<Term>,
         desiredResult: Formula
-    ): RuleResult {
-        return applyIncremental(context, context.regularForms, formulas, terms, desiredResult)
+    ): TowardResult {
+        return applyIncremental(context, context.regularForms.navigableKeySet(), formulas, terms, desiredResult)
     }
 }
 
@@ -104,9 +114,14 @@ open class LogicDefRule(
  * Created by liyicheng at 2020-05-04 13:40
  */
 object LogicRules {
+    val LogicNamespace = "logic"
+
+    private fun nameOf(n : String) : QualifiedName{
+        return QualifiedName.of(n, LogicNamespace)
+    }
+
     object RuleFlatten : LogicRule {
-        override val name: String
-            get() = "Flatten And/Or"
+        override val name: QualifiedName = nameOf("Flatten")
 
         override val description: String
             get() = "(A∧B)∧C ⇒ A∧B∧C, (A∨B)∨C ⇒ A∨B∨C"
@@ -116,23 +131,23 @@ object LogicRules {
             formulas: List<Formula>,
             terms: List<Term>,
             desiredResult: Formula
-        ): RuleResult {
-            val fs = context.regularForms
-            val flattened = desiredResult.flatten()
-            val results = ArrayList<Formula>(fs.size)
-            for (f in fs) {
-                val f1 = f.flatten()
+        ): TowardResult {
+            val fs = context.regularForms.keys
+            val flattened = desiredResult.flatten().regularForm
+            val results = ArrayList<Result>(fs.size)
+            for ((fr,f) in context.regularForms) {
+                val f1 = fr.flatten()
                 if (f1.isIdentityTo(flattened)) {
-                    return Reached(desiredResult)
+                    return Reached(desiredResult, listOf(f))
                 }
-                results += f1
+                results += Result(desiredResult, listOf(f))
             }
 
             return NotReached(results)
         }
 
-        override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Formula> {
-            return context.formulas.map { it.flatten() }
+        override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Result> {
+            return context.formulas.map { Result(it.flatten(), listOf(it)) }
         }
 
         override fun applyIncremental(
@@ -141,15 +156,15 @@ object LogicRules {
             formulas: List<Formula>,
             terms: List<Term>,
             desiredResult: Formula
-        ): RuleResult {
-            val results = ArrayList<Formula>(obtained.size)
-            val flattened = desiredResult.flatten()
+        ): TowardResult {
+            val results = ArrayList<Result>(obtained.size)
+            val flattened = desiredResult.flatten().regularForm
             for (f in obtained) {
-                val f1 = f.flatten()
+                val f1 = f.flatten().regularForm
                 if (f1.isIdentityTo(flattened)) {
-                    return Reached(desiredResult)
+                    return Reached(desiredResult, listOf(f))
                 }
-                results += f1
+                results += Result(desiredResult, listOf(f))
             }
 
             return NotReached(results)
@@ -160,27 +175,46 @@ object LogicRules {
         matcher: FormulaMatcherContext.() -> FormulaMatcher, replacer: RefFormulaContext.() -> Formula,
         name: String, description: String = "None"
     ): LogicRule {
-        return LogicMatcherRule(name, description, buildMatcher(matcher), replacer)
+        return LogicMatcherRule(nameOf(name), description, buildMatcher(matcher), replacer)
     }
 
     private fun def(
-        m1: FormulaMatcherContext.() -> FormulaMatcher, r1: RefFormulaContext.() -> Formula,
-        m2: FormulaMatcherContext.() -> FormulaMatcher, r2: RefFormulaContext.() -> Formula,
+        p: SimpleFormulaContext.() -> Formula,
+        q: SimpleFormulaContext.() -> Formula,
         name: String, description: String = "None"
-    ): LogicRule = LogicDefRule(name, description, buildMatcher(m1), r1, buildMatcher(m2), r2)
+    ): LogicRule {
+        val f1 = buildFormula(p)
+        val f2 = buildFormula(q)
+        val m1 = FormulaMatcher.fromFormula(f1)
+        val m2 = FormulaMatcher.fromFormula(f2)
+        val r1: (RefFormulaContext.() -> Formula) = {
+            f2.replaceVar { v ->
+                termContext.context[v.name]?.term!!
+            }.replaceNamed {nf ->
+                formulas[nf.name.fullName]?.formula!!
+            }
+        }
+        val r2: (RefFormulaContext.() -> Formula) = {
+            f1.replaceVar { v ->
+                termContext.context[v.name]?.term!!
+            }.replaceNamed {nf ->
+                formulas[nf.name.fullName]?.formula!!
+            }
+        }
+        return LogicDefRule(nameOf(name), description, m1, r1, m2, r2)
+    }
 
 
-    val RuleDoubleNegative = of({ !!P }, { P }, "Double negative", "!!P => P")
+    val RuleDoubleNegate = of({ !!P }, { P }, "DoubleNegate", "!!P => P")
 
-    val RuleIdentityAnd = of({ andF(Q, P, P) }, { Q and P }, "Identity:And", "!!P => P")
-    val RuleIdentityOr = of({ orF(Q, P, P) }, { Q or P }, "Identity:Or")
+    val RuleIdentityAnd = of({ andF(Q, P, P) }, { Q and P }, "IdentityAnd", "P&P => P")
+    val RuleIdentityOr = of({ orF(Q, P, P) }, { Q or P }, "IdentityOr","P|P => P")
 
-    val RuleAbsorptionAnd = of({ andF(R, P, P or Q) }, { R and P }, "Absorption:And")
-    val RuleAbsorptionOr = of({ orF(R, P, P and Q) }, { R or P }, "Absorption:And")
+    val RuleAbsorptionAnd = of({ andF(R, P, P or Q) }, { R and P }, "AbsorptionAnd","P&(P|Q) => P")
+    val RuleAbsorptionOr = of({ orF(R, P, P and Q) }, { R or P }, "AbsorptionOr","P|(P&Q) => P")
 
     object RuleAndConstruct : LogicRule {
-        override val name: String
-            get() = "Construction And"
+        override val name: QualifiedName = nameOf("ConstructAnd")
         override val description: String
             get() = "P,Q => P&Q"
 
@@ -189,18 +223,23 @@ object LogicRules {
             formulas: List<Formula>,
             terms: List<Term>,
             desiredResult: Formula
-        ): RuleResult {
+        ): TowardResult {
             if (desiredResult !is AndFormula) {
                 return NotReached(emptyList())
             }
             val children = desiredResult.children
-            if (context.regularForms.containsAll(children)) {
-                return Reached(desiredResult)
+
+            val rf = context.regularForms
+            if (children.all { c -> c.regularForm in rf }) {
+                val ctx = children.map { c ->
+                    context.regularForms[c.regularForm]!!
+                }
+                return Reached(desiredResult, ctx)
             }
             return NotReached(emptyList())
         }
 
-        override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Formula> {
+        override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Result> {
             return emptyList()
         }
 
@@ -210,29 +249,33 @@ object LogicRules {
             formulas: List<Formula>,
             terms: List<Term>,
             desiredResult: Formula
-        ): RuleResult {
+        ): TowardResult {
             if (desiredResult !is AndFormula) {
                 return NotReached(emptyList())
             }
             val children = desiredResult.children
             if (children.all { context.regularForms.contains(it) || obtained.contains(it) }) {
-                return Reached(desiredResult)
+                val allContext = context.formulas.asSequence() + obtained.asSequence()
+                val ctx = children.map { c ->
+                    allContext.first { f -> c.isIdentityTo(f) }
+                }
+                return Reached(desiredResult, ctx)
             }
             return NotReached(emptyList())
         }
     }
 
-    val RuleAndPart = of({ andF(Q, P) }, { P }, "And part", "P&Q => P")
+    val RuleAndProject = of({ andF(Q, P) }, { P }, "AndProject", "P&Q => P")
 
     //    val Rule
-    val RuleImplyCompose = of({ (P implies Q) and (Q implies R) }, { P implies R }, "Imply composition",
+    val RuleImplyCompose = of({ (P implies Q) and (Q implies R) }, { P implies R }, "ImplyCompose",
         "P->Q and Q->R => P->R"
     )
 
 
-    val RuleImplyDef = def({ P implies Q }, { !P or Q },
-        { !P or Q }, { P implies Q },
-        "Def Imply", "P->Q <=> !P & Q"
+    val RuleDefImply = def({ P implies Q }, { !P or Q },
+//        { !P or Q }, { P implies Q },
+        "DefImply", "P->Q <=> !P | Q"
     )
 
 
@@ -240,83 +283,134 @@ object LogicRules {
 
         val matcher = buildMatcher { P implies Q }
 
+        /**
+         * @param rf regular form map
+         */
+        private fun buildResults(
+            context: Collection<Formula>,
+            rf: NavigableMap<Formula, Formula>
+        ): List<Pair<Formula, Formula>> {
+            return context.flatMap { f ->
+                matcher.replaceOneWith(f) {
+                    val pr = P.regularForm
+                    if (rf.contains(pr)) {
+                        Q to rf[pr]!!
+                    } else {
+                        null
+                    }
+                }
+            }
+        }
+
         override fun applyIncremental(
             context: FormulaContext,
             obtained: SortedSet<Formula>,
             formulas: List<Formula>,
             terms: List<Term>,
             desiredResult: Formula
-        ): RuleResult {
-            val fs = context.regularForms
-            val results = obtained.flatMap { f ->
-                matcher.replaceOne(f) {
-                    if (fs.contains(P.toRegularForm())) {
-                        Q
-                    } else {
-                        null
-                    }
+        ): TowardResult {
+            val dr = desiredResult.regularForm
+            val rf = context.regularForms
+            val results = buildResults(obtained, rf)
+            for (re in results) {
+                if (re.first.regularForm.isIdentityTo(dr)) {
+                    return Reached(re.first, listOf(re.second))
                 }
             }
-            return if (results.any { it.isIdentityTo(desiredResult) }) {
-                Reached(desiredResult)
-            } else {
-                NotReached(results)
-            }
+            return NotReached(results.map {
+                Result(it.first, listOf(it.second))
+            })
         }
 
-        override val name: String
-            get() = "Imply"
+        override val name: QualifiedName = nameOf("Imply")
         override val description: String
             get() = "P,P->Q => Q"
 
 
-        override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Formula> {
-            val fs = context.regularForms
-            return context.formulas.flatMap { f ->
-                matcher.replaceOne(f) {
-                    if (fs.contains(P.toRegularForm())) {
-                        Q
-                    } else {
-                        null
-                    }
-                }
+        override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Result> {
+            val rf = context.regularForms
+            return buildResults(context.formulas, rf).map {
+                Result(it.first, listOf(it.second))
             }
         }
     }
 
 
     val RuleEquivToDef = def({ (P implies Q) and (Q implies P) }, { P equivTo Q },
-        { P equivTo Q }, { (P implies Q) and (Q implies P) },
-        "Def EquivTo", "(P->Q & Q->P) <=> P<->Q"
+//        { P equivTo Q }, { (P implies Q) and (Q implies P) },
+        "DefEquivTo", "(P->Q & Q->P) <=> P<->Q"
     )
 
-    val RuleEqualReplace = of({ (x equalTo y) and phi(x) }, { phi(y) }, "Equal replacing",
+    val RuleEqualReplace = of({ (x equalTo y) and phi(x) }, { phi(y) }, "EqualReplace",
         "x=y & phi(x) => phi(y)"
     )
 
+    object RuleExcludeMiddle : LogicRule {
 
+        override val name: QualifiedName = nameOf("ExcludeMiddle")
+        override val description: String
+            get() = "=> P or !P"
+
+        val matcher = buildMatcher { P or !P }
+
+        override fun applyIncremental(
+            context: FormulaContext,
+            obtained: SortedSet<Formula>,
+            formulas: List<Formula>,
+            terms: List<Term>,
+            desiredResult: Formula
+        ): TowardResult {
+            val matchResults = matcher.match(desiredResult)
+            if (matchResults.isNotEmpty()) {
+                return Reached(desiredResult, emptyList())
+            }
+            return NotReached(emptyList())
+        }
+
+
+        override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Result> {
+            if (formulas.isEmpty()) {
+                return emptyList()
+            }
+            return formulas.map { f ->
+                val nf = buildFormula { f or !f }
+                Result(nf, emptyList())
+            }
+        }
+    }
+
+    /**
+     * The list of all the logic rules.
+     */
+    val Rules = listOf(
+        RuleFlatten,
+        RuleDoubleNegate,
+        RuleIdentityAnd,
+        RuleIdentityOr,
+        RuleAbsorptionAnd,
+        RuleAbsorptionOr,
+        RuleAndConstruct,
+        RuleAndProject,
+        RuleImplyCompose,
+        RuleDefImply,
+        RuleImply,
+        RuleEquivToDef,
+        RuleEqualReplace,
+        RuleExcludeMiddle
+    )
+
+    /**
+     * A rule that tries to apply all the viable logic rules for multiple steps.
+     */
     object AllLogicRule : Rule {
-        val rules = listOf(
-            RuleFlatten,
-            RuleDoubleNegative,
-            RuleIdentityAnd,
-            RuleIdentityOr,
-            RuleAbsorptionAnd,
-            RuleAbsorptionOr,
-            RuleAndConstruct,
-            RuleAndPart,
-            RuleImplyCompose,
-            RuleImplyDef,
-            RuleImply,
-            RuleEquivToDef,
-            RuleEqualReplace
-        )
-        override val name: String
-            get() = "Logic"
+
+        override val name: QualifiedName
+            get() = nameOf("Logic")
         override val description: String
             get() = "Combination of all logic rules."
 
         var searchDepth = 3
+
 
         @Suppress("NAME_SHADOWING")
         override fun applyToward(
@@ -324,25 +418,39 @@ object LogicRules {
             formulas: List<Formula>,
             terms: List<Term>,
             desiredResult: Formula
-        ): RuleResult {
-            val dr = desiredResult.toRegularForm()
-            var context = context
-            val obtained = sortedSetOf(FormulaComparator)
-            obtained.addAll(context.formulas)
-            val results = arrayListOf<Formula>()
+        ): TowardResult {
+//            val dr = desiredResult.regularForm
+            var context = context.copy()
+
+            val reached = TreeMap<Formula, List<Formula>>(FormulaComparator)
+            for (en in context.regularForms) {
+                reached[en.key] = listOf(en.value)
+            }
+            var obtained : SortedSet<Formula> = TreeSet(reached.navigableKeySet()) // formulas obtained in each loop
             for (i in 0 until searchDepth) {
                 var applied = false
-                for (rule in rules) {
-                    val re = rule.applyIncremental(context, obtained, formulas, terms, dr)
-                    when (re) {
-                        is Reached -> return Reached(desiredResult)
+                val newObtained = sortedSetOf(FormulaComparator)
+                for (rule in Rules) {
+                    val towardResult =
+                        rule.applyIncremental(context, obtained, formulas, terms, desiredResult)
+                    when (towardResult) {
+                        is Reached -> {
+                            val re = towardResult.result
+                            val ctx = re.dependencies.flatMap {
+                                reached[it.regularForm]!!
+                            } // recursive dependencies
+                            return Reached(desiredResult, ctx)
+                        }
                         is NotReached -> {
-                            for (f in re.results) {
-                                val fr = f.toRegularForm()
-
-                                if (fr !in context.regularForms) {
+                            for (re in towardResult.results) {
+                                val f = re.f
+                                val fr = f.regularForm
+                                if (fr !in reached) {
                                     applied = true
-                                    obtained += fr
+                                    reached[fr] = re.dependencies.flatMap {
+                                        reached[it.regularForm]!!
+                                    }
+                                    newObtained += fr
                                 }
                             }
                         }
@@ -351,18 +459,19 @@ object LogicRules {
                 if (!applied) {
                     break
                 }
-                context = context.addAll(obtained)
-                results.addAll(obtained)
+                context.addAll(obtained)
                 obtained.clear()
+                obtained = newObtained
             }
-            return NotReached(results)
+            return NotReached(emptyList())
         }
 
-        override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Formula> {
+        override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Result> {
             return emptyList()
         }
 
     }
+
 
 }
 

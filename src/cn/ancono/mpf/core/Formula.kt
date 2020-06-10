@@ -67,6 +67,8 @@ sealed class Formula : Node<Formula> {
      */
     abstract fun recurMapMulti(f: (Formula) -> List<Formula>): List<Formula>
 
+    abstract fun <T> recurMapMultiWith(f: (Formula) -> List<Pair<Formula,T>>): List<Pair<Formula,T>>
+
     abstract fun recurMap(f: (Formula) -> Formula): Formula
 
     /**
@@ -114,20 +116,30 @@ sealed class Formula : Node<Formula> {
 
     fun replaceVar(replaceMap: Map<Variable, Term>): Formula = replaceVar { replaceMap.getOrDefault(it, VarTerm(it)) }
 
+    open fun replaceNamed(mapper : (NamedFormula) -> Formula) : Formula{
+        return recurMap { f ->
+            if (f is NamedFormula) {
+                mapper(f)
+            }else{
+                f
+            }
+        }
+    }
+
 
     internal abstract fun regularizeVarName(
         nameMap: MutableMap<Variable, Variable>,
         nameProvider: Iterator<Variable>
     ): Formula
 
-
     /**
      * Converts this formula to the regular form, renaming constrained variables to `$1, $2 ...` and sorting sub-formulas.
      * This method requires that variables named like `$1` should not appear in the original formula.
      */
-    open fun toRegularForm(): Formula {
-        return toRegularForm0(1).first
+    val regularForm : Formula by lazy {
+        toRegularForm0(1).first
     }
+
 
     /**
      * @return a regular form and the next variable order
@@ -168,6 +180,10 @@ sealed class AtomicFormula : Formula(), AtomicNode<Formula> {
         get() = 0
 
     override fun recurMapMulti(f: (Formula) -> List<Formula>): List<Formula> {
+        return f(this)
+    }
+
+    override fun <T> recurMapMultiWith(f: (Formula) -> List<Pair<Formula, T>>): List<Pair<Formula, T>> {
         return f(this)
     }
 
@@ -342,6 +358,21 @@ sealed class CombinedFormula(override val children: List<Formula>, val ordered: 
         result.addAll(f(this))
         return result
     }
+
+    override fun <T> recurMapMultiWith(f: (Formula) -> List<Pair<Formula, T>>): List<Pair<Formula, T>> {
+        val possibleChildren = children.map { it.recurMapMultiWith(f) }
+        val result = ArrayList<Pair<Formula,T>>(possibleChildren.sumBy { it.size })
+        for (i in possibleChildren.indices) {
+            for (c in possibleChildren[i]) {
+                val newChildren = ArrayList(children)
+                newChildren[i] = c.first
+                result += copyOf(newChildren) to c.second
+            }
+        }
+        result.addAll(f(this))
+        return result
+    }
+
 
     override fun recurMap(f: (Formula) -> Formula): Formula {
         return f(copyOf(children.map { it.recurMap(f) }))

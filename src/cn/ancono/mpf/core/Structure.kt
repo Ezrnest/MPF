@@ -1,5 +1,7 @@
 package cn.ancono.mpf.core
 
+import cn.ancono.mpf.core.QualifiedName.Companion.of
+
 
 /*
  * Created by liyicheng at 2020-04-04 19:27
@@ -8,7 +10,11 @@ package cn.ancono.mpf.core
  * Describes a predicate in a structure.
  * @author liyicheng
  */
-class Predicate(val argLength: Int, val name: QualifiedName) {
+class Predicate(
+    val argLength: Int,
+    val name: QualifiedName,
+    val ordered: Boolean = true
+) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -34,7 +40,8 @@ class Function(
      * The length of arguments of this function, -1 means the length of arguments is variable..
      */
     val argLength: Int,
-    val name: QualifiedName
+    val name: QualifiedName,
+    val ordered: Boolean = true
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -60,18 +67,55 @@ data class Constant(val name: QualifiedName)
  */
 interface Structure {
 
-    val predicates: Set<Predicate>
+    val predicateMap: Map<QualifiedName, Predicate>
 
-    val functions: Set<Function>
+    val predicates
+        get() = predicateMap.values
 
-    val constants: Set<Constant>
+    val functionMap: Map<QualifiedName, Function>
 
-    val rules : Set<Rule>
+    val functions
+        get() = functionMap.values
+
+    val constantMap: Map<QualifiedName, Constant>
+
+    val constants
+        get() = constantMap.values
+
+    val ruleMap: Map<QualifiedName, Rule>
+
+    val rules
+        get() = ruleMap.values
+
+    val defaultRules: Map<QualifiedName, Rule>
 }
 
-val EQUAL_PREDICATE = Predicate(2, QualifiedName("equals"))
+val EQUAL_PREDICATE = Predicate(2, of("equals", "logic"), false)
 
 
-open class BasicStructure{
+object LogicStructure : Structure {
+
+    override val predicateMap: Map<QualifiedName, Predicate> = mapOf(
+        EQUAL_PREDICATE.name to EQUAL_PREDICATE
+    )
+    override val functionMap: Map<QualifiedName, Function> = emptyMap()
+    override val constantMap: Map<QualifiedName, Constant> = emptyMap()
+    override val ruleMap: Map<QualifiedName, Rule>
+
+
+    init {
+
+        val rules = LogicRules.Rules + LogicRules.AllLogicRule
+        val map = mutableMapOf<QualifiedName, Rule>()
+        for (r in rules) {
+            map[r.name] = r
+        }
+        ruleMap = map
+    }
+
+    override val defaultRules: Map<QualifiedName, Rule> = mapOf(
+        LogicRules.AllLogicRule.name to LogicRules.AllLogicRule
+    )
 
 }
+

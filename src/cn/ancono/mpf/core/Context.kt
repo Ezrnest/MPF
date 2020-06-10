@@ -3,33 +3,64 @@ package cn.ancono.mpf.core
 import java.util.*
 
 
-/*
+/**
+ * The context of formulas, constants, functions and predicates.
+ *
  * Created by liyicheng at 2020-06-04 19:23
  */
 class FormulaContext(
-    val formulas: List<Formula>,
-    val constants: Set<Constant>,
-    val functions: Set<Function>,
-    val predicates: Set<Predicate>,
-    /**
-     * Contains all the regular forms of the formulas in this context.
-     */
-    val regularForms: SortedSet<Formula>
+    formulas: List<Formula>,
+    constants: Set<Constant>,
+    functions: Set<Function>,
+    predicates: Set<Predicate>,
+    regularForms: NavigableMap<Formula, Formula>
 ) {
+    private val fors: MutableList<Formula> = formulas.toMutableList()
+    private val cons = constants.toMutableSet()
+    private val funs = functions.toMutableSet()
+    private val pres = predicates.toMutableSet()
+    private val regs: NavigableMap<Formula, Formula> = TreeMap(regularForms)
+
+    /**
+     * The formulas reached.
+     */
+    val formulas: List<Formula>
+        get() = fors
+    val constants: Set<Constant>
+        get() = cons
+    val functions: Set<Function>
+        get() = funs
+    val predicates: Set<Predicate>
+        get() = pres
+
+    /**
+     * Contains all the regular forms of the formulas in this context and their corresponding
+     * original forms.
+     */
+    val regularForms: NavigableMap<Formula, Formula>
+        get() = regs
+
+    fun copy() : FormulaContext{
+        return FormulaContext(formulas, constants, functions, predicates, regularForms)
+    }
 
 
-    fun addAll(fs : Collection<Formula>) : FormulaContext{
-        val nfs = ArrayList<Formula>(formulas.size + fs.size)
-        val nrfs = TreeSet(regularForms)
-        nfs.addAll(formulas)
+    fun addAll(fs: Collection<Formula>) {
+        fors.addAll(fs)
         for (f in fs) {
-            val fr = f.toRegularForm()
-            if (!regularForms.contains(fr)) {
-                nfs += f
-                nrfs += fr
+            val fr = f.regularForm
+            if (fr !in regs) {
+                regs[fr] = f
             }
         }
-        return FormulaContext(nfs,constants, functions, predicates, regularForms)
+    }
+
+    fun addFormula(f: Formula) {
+        fors.add(f)
+        val fr = f.regularForm
+        if (fr !in regs) {
+            regs[fr] = f
+        }
     }
 
     companion object {
@@ -39,11 +70,22 @@ class FormulaContext(
             functions: Set<Function> = emptySet(),
             predicates: Set<Predicate> = emptySet()
         ): FormulaContext {
-            val regularForms = sortedSetOf(FormulaComparator)
+            val regularForms = TreeMap<Formula, Formula>(FormulaComparator)
             for (f in formulas) {
-                regularForms.add(f.toRegularForm())
+                val fr = f.regularForm
+                regularForms[fr] = f
             }
             return FormulaContext(formulas, constants, functions, predicates, regularForms)
         }
+
+        val EMPTY_CONTEXT = FormulaContext(emptyList())
+
     }
+}
+
+class Context(
+    val formulaContext: FormulaContext,
+    val reference: MutableMap<String, Formula>
+) {
+    constructor() : this(FormulaContext.EMPTY_CONTEXT, mutableMapOf())
 }
