@@ -12,7 +12,13 @@ import kotlin.collections.ArrayList
 
 interface LogicRule : Rule {
 
-
+    /**
+     * Applies this rule to the given context and the currently obtained formulas.
+     *
+     * This method is designed for applying logic rules for more than one step.
+     *
+     * @param obtained obtained formulas in regular form
+     */
     fun applyIncremental(
         context: FormulaContext,
         obtained: SortedSet<Formula>,
@@ -110,13 +116,14 @@ open class LogicDefRule(
     }
 }
 
-/*
+/**
+ * Contains all the rules of first order logic.
  * Created by liyicheng at 2020-05-04 13:40
  */
 object LogicRules {
     val LogicNamespace = "logic"
 
-    private fun nameOf(n : String) : QualifiedName{
+    private fun nameOf(n: String): QualifiedName {
         return QualifiedName.of(n, LogicNamespace)
     }
 
@@ -135,7 +142,7 @@ object LogicRules {
             val fs = context.regularForms.keys
             val flattened = desiredResult.flatten().regularForm
             val results = ArrayList<Result>(fs.size)
-            for ((fr,f) in context.regularForms) {
+            for ((fr, f) in context.regularForms) {
                 val f1 = fr.flatten()
                 if (f1.isIdentityTo(flattened)) {
                     return Reached(desiredResult, listOf(f))
@@ -190,14 +197,14 @@ object LogicRules {
         val r1: (RefFormulaContext.() -> Formula) = {
             f2.replaceVar { v ->
                 termContext.context[v.name]?.term!!
-            }.replaceNamed {nf ->
+            }.replaceNamed { nf ->
                 formulas[nf.name.fullName]?.formula!!
             }
         }
         val r2: (RefFormulaContext.() -> Formula) = {
             f1.replaceVar { v ->
                 termContext.context[v.name]?.term!!
-            }.replaceNamed {nf ->
+            }.replaceNamed { nf ->
                 formulas[nf.name.fullName]?.formula!!
             }
         }
@@ -208,10 +215,10 @@ object LogicRules {
     val RuleDoubleNegate = of({ !!P }, { P }, "DoubleNegate", "!!P => P")
 
     val RuleIdentityAnd = of({ andF(Q, P, P) }, { Q and P }, "IdentityAnd", "P&P => P")
-    val RuleIdentityOr = of({ orF(Q, P, P) }, { Q or P }, "IdentityOr","P|P => P")
+    val RuleIdentityOr = of({ orF(Q, P, P) }, { Q or P }, "IdentityOr", "P|P => P")
 
-    val RuleAbsorptionAnd = of({ andF(R, P, P or Q) }, { R and P }, "AbsorptionAnd","P&(P|Q) => P")
-    val RuleAbsorptionOr = of({ orF(R, P, P and Q) }, { R or P }, "AbsorptionOr","P|(P&Q) => P")
+    val RuleAbsorptionAnd = of({ andF(R, P, P or Q) }, { R and P }, "AbsorptionAnd", "P&(P|Q) => P")
+    val RuleAbsorptionOr = of({ orF(R, P, P and Q) }, { R or P }, "AbsorptionOr", "P|(P&Q) => P")
 
     object RuleAndConstruct : LogicRule {
         override val name: QualifiedName = nameOf("ConstructAnd")
@@ -379,6 +386,93 @@ object LogicRules {
         }
     }
 
+    object RuleExistConstant : LogicRule {
+
+        override val name: QualifiedName = nameOf("ExistConstant")
+        override val description: String
+            get() = "phi(c) => exist[x] phi(x)"
+
+        private fun apply(f: Formula): List<Pair<Formula, Constant>> {
+            val constants = f.allConstants()
+            val newVariable = Formula.nextVar(f)
+            val varTerm = VarTerm(newVariable)
+            return constants.map { c ->
+                buildFromConstant(f, c, newVariable, varTerm)
+            }
+        }
+
+        private fun buildFromConstant(f: Formula, c: Constant, nv: Variable, vt: VarTerm): Pair<Formula, Constant> {
+            val sub = f.recurMapTerm { t ->
+                if (t is ConstTerm && t.c == c) {
+                    vt
+                } else {
+                    t
+                }
+            }
+            val nf = ExistFormula(sub, nv)
+            return nf to c
+        }
+
+
+        override fun applyIncremental(
+            context: FormulaContext,
+            obtained: SortedSet<Formula>,
+            formulas: List<Formula>,
+            terms: List<Term>,
+            desiredResult: Formula
+        ): TowardResult {
+            // apply to the given constant term if exists
+            val givenConstants = terms.filterIsInstance<ConstTerm>().map { it.c }
+
+            val allResults = arrayListOf<Result>()
+            for (f in context.formulas + obtained.toList()) {
+                val newVariable = Formula.nextVar(f)
+                val varTerm = VarTerm(newVariable)
+                val constants = if (givenConstants.isEmpty()) {
+                    f.allConstants()
+                } else {
+                    givenConstants
+                }
+                for (c in constants) {
+                    val (rf, constant) = buildFromConstant(f, c, newVariable, varTerm)
+                    val regular = rf.regularForm
+                    if (regular.isIdentityTo(desiredResult.regularForm)) {
+                        return Reached(desiredResult, listOf(f), mapOf("constant" to constant))
+                    }
+                    if (regular !in obtained) {
+                        val result = Result(rf, listOf(f), mapOf("constant" to constant))
+                        allResults.add(result)
+                    }
+                }
+
+            }
+            return NotReached(allResults)
+        }
+
+
+        override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Result> {
+            val givenConstants = terms.filterIsInstance<ConstTerm>().map { it.c }
+
+            val allResults = arrayListOf<Result>()
+            for (f in context.formulas) {
+                val newVariable = Formula.nextVar(f)
+                val varTerm = VarTerm(newVariable)
+                val constants = if (givenConstants.isEmpty()) {
+                    f.allConstants()
+                } else {
+                    givenConstants
+                }
+                for (c in constants) {
+                    val (rf, constant) = buildFromConstant(f, c, newVariable, varTerm)
+                    val result = Result(rf, listOf(f), mapOf("constant" to constant))
+                    allResults.add(result)
+                }
+
+            }
+            return allResults
+        }
+    }
+
     /**
      * The list of all the logic rules.
      */
@@ -420,13 +514,13 @@ object LogicRules {
             desiredResult: Formula
         ): TowardResult {
 //            val dr = desiredResult.regularForm
-            var context = context.copy()
+            val context = context.copy()
 
             val reached = TreeMap<Formula, List<Formula>>(FormulaComparator)
             for (en in context.regularForms) {
                 reached[en.key] = listOf(en.value)
             }
-            var obtained : SortedSet<Formula> = TreeSet(reached.navigableKeySet()) // formulas obtained in each loop
+            var obtained: SortedSet<Formula> = TreeSet(reached.navigableKeySet()) // formulas obtained in each loop
             for (i in 0 until searchDepth) {
                 var applied = false
                 val newObtained = sortedSetOf(FormulaComparator)

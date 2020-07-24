@@ -25,7 +25,10 @@ interface Rule {
     /**
      * Applies this rule to the given context, formulas and terms, and return the result of applying
      * this rule. If this rule is not applicable or the desired result can not be reached, `null` may be returned.
-     * @param context formulas that
+     * @param context formulas that are obtained
+     * @param formulas optional formula parameters, these formulas may or may not be obtained
+     * @param terms optional term parameters
+     * @param desiredResult the desired result, it may not be reachable with only this rule
      */
     fun applyToward(
         context: FormulaContext,
@@ -37,7 +40,10 @@ interface Rule {
     /**
      * Applies this rule to the given context, formulas and terms, and return a list of possible results of applying
      * this rule. An empty list can be returned if this rule is not suitable.
-     * @param context formulas that
+     * @param context formulas that are obtained
+     * @param formulas optional formula parameters, these formulas may or may not be obtained
+     * @param terms optional term parameters
+     *
      */
     fun apply(
         context: FormulaContext,
@@ -57,17 +63,41 @@ interface Rule {
 /**
  * A result recording the formula reached and context used.
  */
-class Result(val f : Formula, val dependencies : List<Formula>){
+class Result(
+    /**
+     * The resulting formula.
+     */
+    val f: Formula,
+    /**
+     * The formulas from which the result is reached.
+     */
+    val dependencies: List<Formula>,
+    /**
+     * Additional information about the result, default to an empty map.
+     */
+    val moreInfo: Map<String, Any> = emptyMap()
+) {
     override fun toString(): String {
         return "$f; by $dependencies"
     }
 }
 
+/**
+ * Describes a result of applying a rule toward a desired formula.
+ *
+ * @see MatcherRule.applyToward
+ */
 sealed class TowardResult
 
 
-data class Reached(val result: Result) : TowardResult(){
-    constructor(f : Formula, context : List<Formula>) : this(Result(f,context))
+data class Reached(val result: Result) : TowardResult() {
+    constructor(f: Formula, dependencies: List<Formula>, moreInfo: Map<String, Any> = emptyMap()) : this(
+        Result(
+            f,
+            dependencies,
+            moreInfo
+        )
+    )
 
 }
 
@@ -115,8 +145,8 @@ open class MatcherRule(
     override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Result> {
         return context.formulas.flatMap {
             val ctx = listOf(it)
-            applyOne(it).asIterable().map {r ->
-                Result(r,ctx)
+            applyOne(it).asIterable().map { r ->
+                Result(r, ctx)
             }
         }
     }

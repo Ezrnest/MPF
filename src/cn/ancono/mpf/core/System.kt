@@ -5,7 +5,16 @@ class RuleHints(val ruleName : QualifiedName){
 
 }
 
-class Deduction(val r : Rule, val result: Result){
+class Deduction(val r : Rule,
+                val result: Result
+){
+    val f : Formula
+        get() = result.f
+    val moreInfo : Map<String,Any>
+        get() = result.moreInfo
+    val dependencies : List<Formula>
+        get() = result.dependencies
+
     override fun toString(): String {
         return "${result.f}; by '${r.name.displayName}' with ${result.dependencies}"
     }

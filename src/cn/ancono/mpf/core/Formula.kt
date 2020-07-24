@@ -67,9 +67,17 @@ sealed class Formula : Node<Formula> {
      */
     abstract fun recurMapMulti(f: (Formula) -> List<Formula>): List<Formula>
 
+    /**
+     * Recursively applies the given function as described in [recurMapMulti] with additional information.
+     */
     abstract fun <T> recurMapMultiWith(f: (Formula) -> List<Pair<Formula,T>>): List<Pair<Formula,T>>
 
     abstract fun recurMap(f: (Formula) -> Formula): Formula
+
+    /**
+     * Recursively applies the given function to all the terms that appear in the formula.
+     */
+    abstract fun recurMapTerm(f : (Term) -> Term) : Formula
 
     /**
      * Flatten this formula so that all the combined nodes do not contain a children of the same type.
@@ -146,7 +154,7 @@ sealed class Formula : Node<Formula> {
      */
     internal abstract fun toRegularForm0(varStart: Int): Pair<Formula, Int>
 
-    internal companion object Helper {
+    internal object Helper {
         val VarNamePattern = Regex("\\$(\\d+)")
 
         val FormulaPairComp: Comparator<Pair<Formula, Int>> = compareBy(FormulaComparator) {
@@ -172,6 +180,19 @@ sealed class Formula : Node<Formula> {
             }
         }
     }
+
+    companion object{
+        /**
+         * Gets an unused variable with the provider.
+         */
+        fun nextVar(f : Formula, provider : Sequence<Variable> = Variable.getXNNameProvider()) : Variable{
+            val allNames = f.allVariables
+            return provider.first {
+                it !in allNames
+            }
+        }
+    }
+
 
 }
 
@@ -245,7 +266,9 @@ class PredicateFormula(val p: Predicate, val terms: List<Term>) : AtomicFormula(
         return PredicateFormula(p, terms.map { it.toRegularForm() }) to varStart
     }
 
-
+    override fun recurMapTerm(f: (Term) -> Term): Formula {
+        return PredicateFormula(p,terms.map(f))
+    }
 }
 
 /**
@@ -311,6 +334,10 @@ class NamedFormula(val name: QualifiedName, val parameters: List<Term> = emptyLi
     override fun toRegularForm0(varStart: Int): Pair<Formula, Int> {
         return NamedFormula(name, parameters.map { it.toRegularForm() }) to varStart
     }
+
+    override fun recurMapTerm(f: (Term) -> Term): Formula {
+        return NamedFormula(name,parameters.map(f))
+    }
 }
 
 
@@ -373,6 +400,10 @@ sealed class CombinedFormula(override val children: List<Formula>, val ordered: 
         return result
     }
 
+    override fun recurMapTerm(f: (Term) -> Term): Formula {
+        return copyOf(children.map { it.recurMapTerm(f) })
+    }
+
 
     override fun recurMap(f: (Formula) -> Formula): Formula {
         return f(copyOf(children.map { it.recurMap(f) }))
@@ -410,6 +441,7 @@ sealed class UnaryFormula(child: Formula) : CombinedFormula(listOf(child)) {
     }
 
 
+
 }
 
 sealed class BinaryFormula(child1: Formula, child2: Formula, ordered: Boolean) :
@@ -426,7 +458,6 @@ sealed class BinaryFormula(child1: Formula, child2: Formula, ordered: Boolean) :
 
     override val bracketLevel: Int
         get() = 10
-
 
 }
 
@@ -522,8 +553,13 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
                 it
             }
         }
+
         val (r, n) = nameReplaced.toRegularForm0(varStart + 1)
         return copyOf(r, nv) to n
+    }
+
+    override fun recurMapTerm(f: (Term) -> Term): Formula {
+        return copyOf(child.recurMapTerm(f),v)
     }
 }
 
@@ -545,6 +581,10 @@ class NotFormula(child: Formula) : UnaryFormula(child) {
     override fun toRegularForm0(varStart: Int): Pair<Formula, Int> {
         val (f, n) = child.toRegularForm0(varStart)
         return NotFormula(f) to n
+    }
+
+    override fun recurMapTerm(f: (Term) -> Term): Formula {
+        return NotFormula(child.recurMapTerm(f))
     }
 }
 
@@ -581,6 +621,8 @@ sealed class MultiFormula(children: List<Formula>) : CombinedFormula(children, f
         }
         return copyOf(newChildren) to vs
     }
+
+
 }
 
 class AndFormula(children: List<Formula>) : MultiFormula(children) {
@@ -712,3 +754,22 @@ object FormulaComparator : Comparator<Formula> {
     }
 }
 
+/**
+ * Collects all the constants appearing in this formula.
+ */
+fun Formula.allConstants() : List<Constant>{
+    val constants = arrayListOf<Constant>()
+    this.recurApply {
+        if (it is PredicateFormula) {
+            for (t in it.terms) {
+                t.allConstantsTo(constants)
+            }
+        }else if (it is NamedFormula) {
+            for (t in it.parameters) {
+                t.allConstantsTo(constants)
+            }
+        }
+        false
+    }
+    return constants
+}

@@ -290,3 +290,10 @@ class FunTerm(val f: Function, args: List<Term>) : CombinedTerm(args) {
 }
 
 
+fun Term.allConstantsTo(list : MutableList<Constant>){
+    this.recurApply {
+        if (it is ConstTerm) {
+            list.add(it.c)
+        }
+    }
+}
