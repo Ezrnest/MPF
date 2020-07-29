@@ -5,20 +5,18 @@ class RuleHints(val ruleName : QualifiedName){
 
 }
 
-class Deduction(val r : Rule,
-                val result: Result
-){
-    val f : Formula
-        get() = result.f
-    val moreInfo : Map<String,Any>
-        get() = result.moreInfo
-    val dependencies : List<Formula>
-        get() = result.dependencies
-
-    override fun toString(): String {
-        return "${result.f}; by '${r.name.displayName}' with ${result.dependencies}"
-    }
-}
+//class Deduction(val r : Rule,
+//                val result: Result
+//){
+//    val f : Formula
+//        get() = result.f
+//    val moreInfo : Map<String,Any>
+//        get() = result.moreInfo
+//    val dependencies : List<Formula>
+//        get() = result.dependencies
+//
+//
+//}
 /**
  * The system is the core of the deduction system.
  *
@@ -60,7 +58,7 @@ class System(val structure : Structure){
             val tr = rule.applyToward(context.formulaContext, emptyList(), emptyList(),f)
             if (tr is Reached) {
                 addFormula(f)
-                return Deduction(rule,tr.result)
+                return tr.result
             }
         }
 

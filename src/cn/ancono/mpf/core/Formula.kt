@@ -15,7 +15,7 @@ data class Variable(val name: String) {
 
     companion object {
         /**
-         * Returns a name provider that returns "x1", "x2" ...
+         * Returns a name provider that returns names like "x1", "x2" ...
          */
         fun getXNNameProvider(leadingChar: String = "x"): Sequence<Variable> = sequence {
             var n = 1
@@ -48,17 +48,6 @@ sealed class Formula : Node<Formula> {
 
 
     /**
-     * Applies the function recursively to each formula nodes in this formula. The order of
-     * iteration is pre-order. The function may return `true` to indicate that the iterating process
-     * should be stopped.
-     *
-     * @param f a function to apply to the sub-nodes and may return `true` to indicate the process should be stopped
-     *
-     * @return `true` if the process should be stopped, `false` to continue.
-     */
-    abstract fun recurApply(f: (Formula) -> Boolean) : Boolean
-
-    /**
      * Performs a 'multi-branch' mapping recursively to this formula. Each formula in the returned list only differs
      * with the original formula by one formula node, which is one of the result of applying [f] to the formula node.
      *
@@ -70,14 +59,14 @@ sealed class Formula : Node<Formula> {
     /**
      * Recursively applies the given function as described in [recurMapMulti] with additional information.
      */
-    abstract fun <T> recurMapMultiWith(f: (Formula) -> List<Pair<Formula,T>>): List<Pair<Formula,T>>
+    abstract fun <T> recurMapMultiWith(f: (Formula) -> List<Pair<Formula, T>>): List<Pair<Formula, T>>
 
     abstract fun recurMap(f: (Formula) -> Formula): Formula
 
     /**
      * Recursively applies the given function to all the terms that appear in the formula.
      */
-    abstract fun recurMapTerm(f : (Term) -> Term) : Formula
+    abstract fun recurMapTerm(f: (Term) -> Term): Formula
 
     /**
      * Flatten this formula so that all the combined nodes do not contain a children of the same type.
@@ -103,6 +92,13 @@ sealed class Formula : Node<Formula> {
 
     open fun renameAllVar(nameMap: Map<Variable, Variable>): Formula = renameAllVar { nameMap.getOrDefault(it, it) }
 
+
+
+    internal abstract fun renameQualifiedVar0(
+        nameMap: MutableMap<Variable, Variable>,
+        nameProvider: Iterator<Variable>
+    ): Formula
+
     /**
      * Renames only the free variables in this formula according to the map.
      */
@@ -111,10 +107,20 @@ sealed class Formula : Node<Formula> {
     open fun renameVar(nameMap: Map<Variable, Variable>): Formula = renameVar { nameMap.getOrDefault(it, it) }
 
     /**
-     * Renames the variables in this formula. The [nameProvider] should provide a sequence of non-duplicate names.
+     * Renames the qualified variables in this formula using the name provider in order.
      */
-    fun regularizeVarName(nameProvider: Iterator<Variable> = Variable.getXNNameProvider().iterator()): Formula {
-        return regularizeVarName(mutableMapOf(), nameProvider)
+    fun regularizeQualifiedVar(nameProvider: Iterator<Variable>): Formula {
+        return renameQualifiedVar0(hashMapOf(), nameProvider)
+    }
+
+    /**
+     * Renames all the variables in this formula. The [nameProvider] should provide a sequence of non-duplicate names.
+     * This method will returns a map of renamed free variables and their new names.
+     *
+     */
+    fun regularizeAllVarName(nameProvider: Iterator<Variable> = Variable.getXNNameProvider().iterator()): Pair<Formula,Map<Variable,Variable>> {
+        val map = mutableMapOf<Variable,Variable>()
+        return regularizeAllVarName(map, nameProvider) to map
     }
 
     /**
@@ -124,18 +130,21 @@ sealed class Formula : Node<Formula> {
 
     fun replaceVar(replaceMap: Map<Variable, Term>): Formula = replaceVar { replaceMap.getOrDefault(it, VarTerm(it)) }
 
-    open fun replaceNamed(mapper : (NamedFormula) -> Formula) : Formula{
+    /**
+     * Replaces all the named formulas in this formula with the given [mapper].
+     */
+    open fun replaceNamed(mapper: (NamedFormula) -> Formula): Formula {
         return recurMap { f ->
             if (f is NamedFormula) {
                 mapper(f)
-            }else{
+            } else {
                 f
             }
         }
     }
 
 
-    internal abstract fun regularizeVarName(
+    internal abstract fun regularizeAllVarName(
         nameMap: MutableMap<Variable, Variable>,
         nameProvider: Iterator<Variable>
     ): Formula
@@ -144,15 +153,38 @@ sealed class Formula : Node<Formula> {
      * Converts this formula to the regular form, renaming constrained variables to `$1, $2 ...` and sorting sub-formulas.
      * This method requires that variables named like `$1` should not appear in the original formula.
      */
-    val regularForm : Formula by lazy {
-        toRegularForm0(1).first
+    val regularForm: Formula by lazy {
+        if(variables.any { Helper.VarNamePattern.matchEntire(it.name) != null }){
+            // conflicts
+            val (f,m) = regularizeAllVarName(Variable.getXNNameProvider("_").iterator())
+            val r = f.toRegularForm0(1).first
+            val inv = hashMapOf<Variable,Variable>()
+            for ((k, v) in m) {
+                inv[v] = k
+            }
+            r.renameVar(inv)
+        }else{
+            toRegularForm0(1).first
+        }
+
+
     }
 
 
     /**
+     * Recursively converts the formula to regular, it is required that
+     * the
      * @return a regular form and the next variable order
      */
     internal abstract fun toRegularForm0(varStart: Int): Pair<Formula, Int>
+
+    /**
+     * Returns a prenex normal form of the formula.
+     *
+     * See [PrenexNormalForm](https://mathworld.wolfram.com/PrenexNormalForm.html).
+     *
+     */
+    abstract fun toPrenexForm(): Formula
 
     internal object Helper {
         val VarNamePattern = Regex("\\$(\\d+)")
@@ -181,11 +213,11 @@ sealed class Formula : Node<Formula> {
         }
     }
 
-    companion object{
+    companion object {
         /**
          * Gets an unused variable with the provider.
          */
-        fun nextVar(f : Formula, provider : Sequence<Variable> = Variable.getXNNameProvider()) : Variable{
+        fun nextVar(f: Formula, provider: Sequence<Variable> = Variable.getXNNameProvider()): Variable {
             val allNames = f.allVariables
             return provider.first {
                 it !in allNames
@@ -219,8 +251,16 @@ sealed class AtomicFormula : Formula(), AtomicNode<Formula> {
     override val bracketLevel: Int
         get() = 0
 
-    override fun recurApply(f: (Formula) -> Boolean)  :Boolean{
-        return f(this)
+
+    override fun toPrenexForm(): Formula {
+        return this
+    }
+
+    override fun renameQualifiedVar0(
+        nameMap: MutableMap<Variable, Variable>,
+        nameProvider: Iterator<Variable>
+    ): Formula {
+        return renameAllVar(nameMap)
     }
 }
 
@@ -253,7 +293,8 @@ class PredicateFormula(val p: Predicate, val terms: List<Term>) : AtomicFormula(
         return renameAllVar(renamer)
     }
 
-    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
+
+    override fun regularizeAllVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
         val newTerms = terms.map { it.regularizeVarName(nameMap, nameProvider) }
         return PredicateFormula(p, newTerms)
     }
@@ -267,7 +308,7 @@ class PredicateFormula(val p: Predicate, val terms: List<Term>) : AtomicFormula(
     }
 
     override fun recurMapTerm(f: (Term) -> Term): Formula {
-        return PredicateFormula(p,terms.map(f))
+        return PredicateFormula(p, terms.map(f))
     }
 }
 
@@ -318,7 +359,7 @@ class NamedFormula(val name: QualifiedName, val parameters: List<Term> = emptyLi
     }
 
 
-    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
+    override fun regularizeAllVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
 //        val nParameters = parameters.map<Variable, Variable> { v ->
 //            var nv = nameMap[v]
 //            if (nv == null) {
@@ -336,7 +377,7 @@ class NamedFormula(val name: QualifiedName, val parameters: List<Term> = emptyLi
     }
 
     override fun recurMapTerm(f: (Term) -> Term): Formula {
-        return NamedFormula(name,parameters.map(f))
+        return NamedFormula(name, parameters.map(f))
     }
 }
 
@@ -365,12 +406,6 @@ sealed class CombinedFormula(override val children: List<Formula>, val ordered: 
 
     abstract override fun copyOf(newChildren: List<Formula>): CombinedFormula
 
-    override fun recurApply(f: (Formula) -> Boolean) : Boolean{
-        if (f(this)) {
-            return true
-        }
-        return children.any(f)
-    }
 
     override fun recurMapMulti(f: (Formula) -> List<Formula>): List<Formula> {
         val possibleChildren = children.map { it.recurMapMulti(f) }
@@ -388,7 +423,7 @@ sealed class CombinedFormula(override val children: List<Formula>, val ordered: 
 
     override fun <T> recurMapMultiWith(f: (Formula) -> List<Pair<Formula, T>>): List<Pair<Formula, T>> {
         val possibleChildren = children.map { it.recurMapMultiWith(f) }
-        val result = ArrayList<Pair<Formula,T>>(possibleChildren.sumBy { it.size })
+        val result = ArrayList<Pair<Formula, T>>(possibleChildren.sumBy { it.size })
         for (i in possibleChildren.indices) {
             for (c in possibleChildren[i]) {
                 val newChildren = ArrayList(children)
@@ -420,14 +455,24 @@ sealed class CombinedFormula(override val children: List<Formula>, val ordered: 
         return copyOf(children.map { it.renameAllVar(renamer) })
     }
 
+    override fun renameQualifiedVar0(
+        nameMap: MutableMap<Variable, Variable>,
+        nameProvider: Iterator<Variable>
+    ): Formula {
+        return copyOf(children.map { it.renameQualifiedVar0(nameMap, nameProvider) })
+    }
 
     override fun replaceVar(replacer: (Variable) -> Term): Formula {
         return copyOf(children.map { it.replaceVar(replacer) })
     }
 
-    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
-        val newChildren = children.map { it.regularizeVarName(nameMap, nameProvider) }
+    override fun regularizeAllVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
+        val newChildren = children.map { it.regularizeAllVarName(nameMap, nameProvider) }
         return copyOf(newChildren)
+    }
+
+    override fun toPrenexForm(): Formula {
+        TODO("Not yet implemented")
     }
 }
 
@@ -439,7 +484,6 @@ sealed class UnaryFormula(child: Formula) : CombinedFormula(listOf(child)) {
     override fun flatten(): Formula {
         return copyOf(children.map(Formula::flatten))
     }
-
 
 
 }
@@ -507,6 +551,7 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
         return copyOf(child.renameAllVar(renamer), nv)
     }
 
+
     override fun renameVar(renamer: (Variable) -> Variable): Formula {
         val newRenamer: (Variable) -> Variable = {
             if (it == v) {
@@ -516,6 +561,20 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
             }
         }
         return copyOf(child.renameVar(newRenamer), v)
+    }
+
+    override fun renameQualifiedVar0(
+        nameMap: MutableMap<Variable, Variable>,
+        nameProvider: Iterator<Variable>
+    ): Formula {
+        val nv = nameProvider.next()
+        val original = nameMap[v]
+        nameMap[v] = nv
+        val newChild = child.renameQualifiedVar0(nameMap, nameProvider)
+        if (original != null) {
+            nameMap[v] = original
+        }
+        return copyOf(newChild, nv)
     }
 
     override fun replaceVar(replacer: (Variable) -> Term): Formula {
@@ -529,11 +588,11 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
         return copyOf(child.replaceVar(newReplacer), v)
     }
 
-    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
+    override fun regularizeAllVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
         val nv = nameProvider.next()
         val original = nameMap[v]
         nameMap[v] = nv
-        val newChild = child.regularizeVarName(nameMap, nameProvider)
+        val newChild = child.regularizeAllVarName(nameMap, nameProvider)
         if (original != null) {
             nameMap[v] = original
         }
@@ -559,7 +618,7 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
     }
 
     override fun recurMapTerm(f: (Term) -> Term): Formula {
-        return copyOf(child.recurMapTerm(f),v)
+        return copyOf(child.recurMapTerm(f), v)
     }
 }
 
@@ -573,8 +632,8 @@ class NotFormula(child: Formula) : UnaryFormula(child) {
 
     override fun toString(): String = "¬${wrapBracket(child)}"
 
-    override fun regularizeVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
-        return NotFormula(child.regularizeVarName(nameMap, nameProvider))
+    override fun regularizeAllVarName(nameMap: MutableMap<Variable, Variable>, nameProvider: Iterator<Variable>): Formula {
+        return NotFormula(child.regularizeAllVarName(nameMap, nameProvider))
     }
 
 
@@ -702,7 +761,7 @@ class EquivalentFormula(child1: Formula, child2: Formula) : BinaryFormula(child1
             c1 = f1
             c2 = Helper.renameVarAfter(f2, varStart, n1)
         }
-        return ImplyFormula(c1, c2) to (n1 + n2 - varStart)
+        return EquivalentFormula(c1, c2) to (n1 + n2 - varStart)
     }
 }
 
@@ -757,14 +816,14 @@ object FormulaComparator : Comparator<Formula> {
 /**
  * Collects all the constants appearing in this formula.
  */
-fun Formula.allConstants() : List<Constant>{
+fun Formula.allConstants(): List<Constant> {
     val constants = arrayListOf<Constant>()
     this.recurApply {
         if (it is PredicateFormula) {
             for (t in it.terms) {
                 t.allConstantsTo(constants)
             }
-        }else if (it is NamedFormula) {
+        } else if (it is NamedFormula) {
             for (t in it.parameters) {
                 t.allConstantsTo(constants)
             }

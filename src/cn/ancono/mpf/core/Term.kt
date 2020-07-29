@@ -14,12 +14,6 @@ sealed class Term : Node<Term>, Comparable<Term> {
     abstract fun isIdentityTo(t: Term): Boolean
 
     /**
-     * Applies the function recursively to each term nodes in this term. The order of
-     * iteration is pre-order.
-     */
-    abstract fun recurApply(f: (Term) -> Unit): Unit
-
-    /**
      * Applies the mapping function recursively to each term nodes in this term to build a new term.
      *
      *
@@ -65,9 +59,6 @@ abstract class AtomicTerm : Term(), AtomicNode<Term> {
     override val children: List<Term>
         get() = emptyList()
 
-    override fun recurApply(f: (Term) -> Unit) {
-        f(this)
-    }
 
     override fun recurMap(m: (origin: Term, mapped: Term) -> Term): Term {
         return m(this, this)
@@ -240,10 +231,6 @@ class FunTerm(val f: Function, args: List<Term>) : CombinedTerm(args) {
                 Utils.collectionEquals(children, t.children, Term::isIdentityTo)
     }
 
-    override fun recurApply(f: (Term) -> Unit) {
-        f(this)
-        children.forEach { it.recurApply(f) }
-    }
 
     override fun recurMap(m: (origin: Term, mapped: Term) -> Term): Term {
         val nArgs = children.map { it.recurMap(m) }
@@ -295,5 +282,6 @@ fun Term.allConstantsTo(list : MutableList<Constant>){
         if (it is ConstTerm) {
             list.add(it.c)
         }
+        true
     }
 }

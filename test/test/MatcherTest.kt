@@ -1,8 +1,10 @@
 package test
 
 import cn.ancono.mpf.builder.buildFormula
+import cn.ancono.mpf.matcher.FormulaMatcher
 import cn.ancono.mpf.matcher.VarRefFormulaMatcher
 import cn.ancono.mpf.matcher.buildMatcher
+import kotlin.test.assertTrue
 
 
 /*
@@ -113,9 +115,15 @@ object MatcherTest {
         re.forEach { println(it) }
     }
 
+    fun test7(){
+        val f = buildFormula { ((x belongTo A) implies (x belongTo B)) and
+                ((x belongTo B) implies (x belongTo A))}
+        val matcher = FormulaMatcher.fromFormula(buildFormula { (P implies Q) and (Q implies P) })
+        assertTrue { matcher.match(f).isNotEmpty() }
+    }
 
 }
 
 fun main() {
-    MatcherTest.test6()
+    MatcherTest.test7()
 }

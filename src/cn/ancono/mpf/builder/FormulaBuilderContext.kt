@@ -42,6 +42,10 @@ open class FormulaBuilderContext<T : TermBuilderContext>(
     val String.n: NamedFormula
         get() = named(QualifiedName(this))
 
+    fun String.n(vararg terms: Term): NamedFormula {
+        return named(QualifiedName(this), *terms)
+    }
+
     fun named(name: QualifiedName, vararg parameters: Term): NamedFormula {
         return NamedFormula(name, parameters.toList())
     }
@@ -196,7 +200,6 @@ open class FormulaBuilderContext<T : TermBuilderContext>(
     }
 
 
-
 }
 
 
@@ -218,6 +221,9 @@ object SimpleFormulaContext : FormulaBuilderContext<SimpleTermContext>(
 
     @JvmField
     val y = "y".v
+
+    @JvmField
+    val z = "z".v
 
     @JvmField
     val X = "X".v
@@ -251,6 +257,17 @@ class RefFormulaContext(val formulas: FMap, termContext: RefTermContext) :
     val R
         get() = "R".fr
 
+    val usedVariables : Set<Variable>
+    init{
+        val vars = hashSetOf<Variable>()
+        for (rf in formulas.values) {
+            vars.addAll(rf.parameters)
+            vars.addAll(rf.formula.allVariables)
+        }
+        vars.addAll(termContext.usedVariables)
+        usedVariables = vars
+    }
+
     fun refNonNull(name: String): Formula {
         val f = formulas[name] ?: throw NoSuchElementException("No formula named `$name`")
         return f.build(termContext.context)
@@ -277,13 +294,17 @@ class RefFormulaContext(val formulas: FMap, termContext: RefTermContext) :
     val String.tr: Term
         get() = termContext.termRef(this)
 
-    fun unusedVar(): Term {
-        return termContext.unusedVar()
+    fun unusedVar(): Variable {
+        return Variable.getXNNameProvider().first { it !in usedVariables }
+    }
+
+    fun unusedVars() : Sequence<Variable>{
+        return Variable.getXNNameProvider().filter { it !in usedVariables }
     }
 
     inner class RefMatcherFunction(val name: String) {
         operator fun invoke(vararg terms: Term): Formula {
-            val f = this@RefFormulaContext.formulas[name]?: throw NoSuchElementException("No formula named `$name`")
+            val f = this@RefFormulaContext.formulas[name] ?: throw NoSuchElementException("No formula named `$name`")
             return f.build(terms.toList())
 //            return VarRefFormulaMatcher(name, terms.map { (it as RefTermMatcher).refName })
         }

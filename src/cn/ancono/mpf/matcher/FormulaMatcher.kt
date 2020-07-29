@@ -89,9 +89,17 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
 
 
     companion object {
+        /**
+         * Construct a formula matcher from a formula. This method will
+         * convert named formula to formula reference, and convert all the
+         * other types of formulas to corresponding types of formula mathcers.
+         */
         fun fromFormula(f: Formula): FormulaMatcher {
             when (f) {
                 is NamedFormula -> {
+//                    if (f.parameters.isEmpty()) {
+//                        return SimpleRefFormulaMatcher(f.name.fullName)
+//                    }
                     return VarRefFormulaMatcher(f.name.fullName, f.parameters.map { t ->
                         if (t !is VarTerm) {
                             throw UnsupportedOperationException("Named formula with non-variable term is not supported.")
@@ -312,7 +320,7 @@ class VarRefFormulaMatcher(
 //            current[key] = value.v
 //        }
         val free = (x.variables - referred).toList()
-        if (free.size != remains.size) {
+        if (free.size < remains.size) {
             return emptyList()
         }
         val results = arrayListOf<FormulaResult>()

@@ -49,7 +49,7 @@ interface Rule {
         context: FormulaContext,
         formulas: List<Formula>,
         terms: List<Term>
-    ): List<Result>
+    ): List<Deduction>
 
 
 //    /**
@@ -60,27 +60,6 @@ interface Rule {
 
 }
 
-/**
- * A result recording the formula reached and context used.
- */
-class Result(
-    /**
-     * The resulting formula.
-     */
-    val f: Formula,
-    /**
-     * The formulas from which the result is reached.
-     */
-    val dependencies: List<Formula>,
-    /**
-     * Additional information about the result, default to an empty map.
-     */
-    val moreInfo: Map<String, Any> = emptyMap()
-) {
-    override fun toString(): String {
-        return "$f; by $dependencies"
-    }
-}
 
 /**
  * Describes a result of applying a rule toward a desired formula.
@@ -90,9 +69,10 @@ class Result(
 sealed class TowardResult
 
 
-data class Reached(val result: Result) : TowardResult() {
-    constructor(f: Formula, dependencies: List<Formula>, moreInfo: Map<String, Any> = emptyMap()) : this(
-        Result(
+data class Reached(val result: Deduction) : TowardResult() {
+    constructor(r: Rule,f: Formula, dependencies: List<Formula>, moreInfo: Map<String, Any> = emptyMap()) : this(
+        Deduction(
+            r,
             f,
             dependencies,
             moreInfo
@@ -101,7 +81,7 @@ data class Reached(val result: Result) : TowardResult() {
 
 }
 
-data class NotReached(val results: List<Result>) : TowardResult()
+data class NotReached(val results: List<Deduction>) : TowardResult()
 
 
 open class MatcherRule(
@@ -115,13 +95,13 @@ open class MatcherRule(
         terms: List<Term>,
         desiredResult: Formula
     ): TowardResult {
-        val allResults = arrayListOf<Result>()
+        val allResults = arrayListOf<Deduction>()
         val fs = context.formulas
         for (i in fs.lastIndex downTo 0) {
             val f = fs[i]
             val replaced = applyOne(f)
             for (r in replaced) {
-                val re = Result(desiredResult, listOf(f))
+                val re = Deduction(this,desiredResult, listOf(f))
                 if (r.isIdentityTo(desiredResult)) {
                     return Reached(re)
                 }
@@ -142,11 +122,11 @@ open class MatcherRule(
         return results
     }
 
-    override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Result> {
+    override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Deduction> {
         return context.formulas.flatMap {
             val ctx = listOf(it)
             applyOne(it).asIterable().map { r ->
-                Result(r, ctx)
+                Deduction(this,r, ctx)
             }
         }
     }

@@ -2,7 +2,6 @@ package test
 
 import cn.ancono.mpf.core.Variable
 import cn.ancono.mpf.builder.buildFormula
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 
@@ -26,7 +25,7 @@ object FormulaTest {
         println(f)
         println(f.variables)
         println(f.allVariables)
-        println(f.regularizeVarName())
+        println(f.regularizeAllVarName().first)
         println(f.renameAllVar(mapOf(Variable("x") to Variable("x1"))))
 
     }
@@ -44,14 +43,15 @@ object FormulaTest {
             f.isIdentityTo(g)
         }
     }
-    fun test3(){
+
+    fun test3() {
         val f = buildFormula {
-            (a equalTo a) and forAny(a){
+            (a equalTo a) and forAny(a) {
                 a equalTo a
             }
         }
         val expected = buildFormula {
-            (b equalTo b) and forAny(a){
+            (b equalTo b) and forAny(a) {
                 a equalTo a
             }
         }
@@ -60,7 +60,7 @@ object FormulaTest {
         }
     }
 
-    fun testRegularForm(){
+    fun testRegularForm() {
         val f = buildFormula {
             forAny(x) {
                 exist(y) {
@@ -88,8 +88,22 @@ object FormulaTest {
         println(g.regularForm)
     }
 
+    fun testRegularForm2() {
+        val f = buildFormula {
+            forAny(x) {
+                (x belongTo A) implies (x belongTo B)
+            } and
+            forAny(x) {
+                ("$3".v belongTo B) implies ("$3".v belongTo A)
+            }
+        }
+        val r = f.regularForm
+        println(r)
+        println(r.regularForm)
+    }
+
 }
 
 fun main() {
-    FormulaTest.testRegularForm()
+    FormulaTest.testRegularForm2()
 }

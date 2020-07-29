@@ -75,7 +75,16 @@ object SimpleTermContext : TermBuilderContext() {
 
 class RefTermContext(val context: TMap) : TermBuilderContext() {
 
-    val usedVariables = context.values.flatMapTo(hashSetOf()) { it.parameters }
+    val usedVariables : Set<Variable>
+    init{
+        val vars = hashSetOf<Variable>()
+        for (rt in context.values) {
+            vars.addAll(rt.parameters)
+            vars.addAll(rt.term.variables)
+        }
+        usedVariables = vars
+    }
+
 
 
     @get:JvmName("getx")
@@ -100,9 +109,8 @@ class RefTermContext(val context: TMap) : TermBuilderContext() {
         return t.build(context)
     }
 
-    fun unusedVar(): Term {
-        val v = Variable.getXNNameProvider().first { it !in usedVariables }
-        return VarTerm(v)
+    fun unusedVar(): Variable {
+        return Variable.getXNNameProvider().first { it !in usedVariables }
     }
 }
 

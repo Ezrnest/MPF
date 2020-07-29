@@ -59,10 +59,8 @@ class RefTerm(val term: Term, val varCount: Int = 0, val parameters: List<Variab
 
     fun build(vars: List<Term>): Term {
         require(vars.size == parameters.size)
-        val map = hashMapOf<Variable, Term>()
-        for ((v, nv) in parameters.zip(vars)) {
-            map[v] = nv
-        }
+        val map = parameters.zip(vars).toMap()
+
         return term.replaceVar(map)
     }
 

@@ -65,57 +65,50 @@ data class Constant(val name: QualifiedName)
 /**
  * Describes a structure of first order logic.
  */
-interface Structure {
+open class Structure(
+    val name: String,
+    val predicateMap: Map<QualifiedName, Predicate>,
+    val functionMap: Map<QualifiedName, Function>,
+    val constantMap: Map<QualifiedName, Constant>,
+    val ruleMap: Map<QualifiedName, Rule>,
+    val defaultRules: Map<QualifiedName, Rule>
+) {
 
-    val predicateMap: Map<QualifiedName, Predicate>
 
     val predicates
         get() = predicateMap.values
 
-    val functionMap: Map<QualifiedName, Function>
 
     val functions
         get() = functionMap.values
 
-    val constantMap: Map<QualifiedName, Constant>
 
     val constants
         get() = constantMap.values
 
-    val ruleMap: Map<QualifiedName, Rule>
 
     val rules
         get() = ruleMap.values
 
-    val defaultRules: Map<QualifiedName, Rule>
+
 }
 
 val EQUAL_PREDICATE = Predicate(2, of("equals", "logic"), false)
 
 
-object LogicStructure : Structure {
-
-    override val predicateMap: Map<QualifiedName, Predicate> = mapOf(
+/**
+ * The basic first order logic structure.
+ */
+object LogicStructure : Structure(
+    "Logic",
+    mapOf(
         EQUAL_PREDICATE.name to EQUAL_PREDICATE
-    )
-    override val functionMap: Map<QualifiedName, Function> = emptyMap()
-    override val constantMap: Map<QualifiedName, Constant> = emptyMap()
-    override val ruleMap: Map<QualifiedName, Rule>
-
-
-    init {
-
-        val rules = LogicRules.Rules + LogicRules.AllLogicRule
-        val map = mutableMapOf<QualifiedName, Rule>()
-        for (r in rules) {
-            map[r.name] = r
-        }
-        ruleMap = map
-    }
-
-    override val defaultRules: Map<QualifiedName, Rule> = mapOf(
+    ),
+    emptyMap(),
+    emptyMap(),
+    LogicRules.rulesAsMap(),
+    mapOf(
         LogicRules.AllLogicRule.name to LogicRules.AllLogicRule
     )
-
-}
+)
 
