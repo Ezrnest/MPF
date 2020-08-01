@@ -4,6 +4,8 @@ import cn.ancono.mpf.builder.buildFormula
 import cn.ancono.mpf.matcher.FormulaMatcher
 import cn.ancono.mpf.matcher.VarRefFormulaMatcher
 import cn.ancono.mpf.matcher.buildMatcher
+import cn.ancono.mpf.structure.ZFC
+import cn.ancono.mpf.structure.ZFCFormulaScope.belongTo
 import kotlin.test.assertTrue
 
 
@@ -12,7 +14,7 @@ import kotlin.test.assertTrue
  */
 object MatcherTest {
     fun test1() {
-        val f = buildFormula {
+        val f = ZFC.buildFormula {
             forAny(x) {
                 x belongTo A implies (x belongTo B)
             } equivTo "contains".p(A, B)
@@ -118,7 +120,7 @@ object MatcherTest {
     fun test7(){
         val f = buildFormula { ((x belongTo A) implies (x belongTo B)) and
                 ((x belongTo B) implies (x belongTo A))}
-        val matcher = FormulaMatcher.fromFormula(buildFormula { (P implies Q) and (Q implies P) })
+        val matcher = FormulaMatcher.fromFormula(buildFormula { (P implies Q) and (Q implies P) },keepNamed = false)
         assertTrue { matcher.match(f).isNotEmpty() }
     }
 

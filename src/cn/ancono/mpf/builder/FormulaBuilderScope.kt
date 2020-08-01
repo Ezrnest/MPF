@@ -8,14 +8,14 @@ import cn.ancono.mpf.structure.IN_PREDICATE
 /**
  * Builds a formula using an empty context.
  */
-fun buildFormula(builderAction: SimpleFormulaContext.() -> Formula): Formula = builderAction(
-    SimpleFormulaContext
+fun buildFormula(builderAction: SimpleFormulaScope.() -> Formula): Formula = builderAction(
+    SimpleFormulaScope
 )
 
 /*
  * Created by liyicheng at 2020-04-05 17:09
  */
-open class FormulaBuilderContext<T : TermBuilderContext>(
+open class FormulaBuilderScope<T : TermBuilderScope>(
     val termContext: T
 ) {
 
@@ -163,7 +163,7 @@ open class FormulaBuilderContext<T : TermBuilderContext>(
         forAny(variable, builderAction())
 
 
-    fun term(termBuilderAction: TermBuilderContext.() -> Term): Term {
+    fun term(termBuilderAction: TermBuilderScope.() -> Term): Term {
         return termBuilderAction(termContext)
     }
 
@@ -195,16 +195,14 @@ open class FormulaBuilderContext<T : TermBuilderContext>(
         )
     }
 
-    infix fun Term.belongTo(t: Term): Formula {
-        return PredicateFormula(IN_PREDICATE, listOf(this, t))
-    }
+
 
 
 }
 
 
-object SimpleFormulaContext : FormulaBuilderContext<SimpleTermContext>(
-    SimpleTermContext
+object SimpleFormulaScope : FormulaBuilderScope<SimpleTermScope>(
+    SimpleTermScope
 ) {
 
     @JvmField
@@ -230,10 +228,11 @@ object SimpleFormulaContext : FormulaBuilderContext<SimpleTermContext>(
 
     @JvmField
     val Y = "Y".v
+
 }
 
-class RefFormulaContext(val formulas: FMap, termContext: RefTermContext) :
-    FormulaBuilderContext<RefTermContext>(termContext) {
+open class RefFormulaScope(val formulas: FMap, termContext: RefTermScope) :
+    FormulaBuilderScope<RefTermScope>(termContext) {
 
     val x
         @JvmName("getx")
@@ -304,7 +303,7 @@ class RefFormulaContext(val formulas: FMap, termContext: RefTermContext) :
 
     inner class RefMatcherFunction(val name: String) {
         operator fun invoke(vararg terms: Term): Formula {
-            val f = this@RefFormulaContext.formulas[name] ?: throw NoSuchElementException("No formula named `$name`")
+            val f = this@RefFormulaScope.formulas[name] ?: throw NoSuchElementException("No formula named `$name`")
             return f.build(terms.toList())
 //            return VarRefFormulaMatcher(name, terms.map { (it as RefTermMatcher).refName })
         }

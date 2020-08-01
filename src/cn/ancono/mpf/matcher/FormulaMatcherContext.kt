@@ -15,7 +15,7 @@ object FormulaMatcherContext {
         get() = VarRefFormulaMatcher(this)
 
     val String.named
-        get() = NamedFormulaMatcher(QualifiedName(this))
+        get() = NamedFormulaMatcher(QualifiedName(this), emptyList())
 
 
     /**

@@ -1,12 +1,11 @@
 package cn.ancono.mpf.core
 
-import cn.ancono.mpf.builder.RefFormulaContext
-import cn.ancono.mpf.builder.SimpleFormulaContext
+import cn.ancono.mpf.builder.RefFormulaScope
+import cn.ancono.mpf.builder.SimpleFormulaScope
 import cn.ancono.mpf.builder.buildFormula
 import cn.ancono.mpf.matcher.FormulaMatcher
 import cn.ancono.mpf.matcher.FormulaMatcherContext
 import cn.ancono.mpf.matcher.buildMatcher
-import java.lang.Exception
 import java.util.*
 import kotlin.collections.ArrayList
 
@@ -43,7 +42,7 @@ open class LogicMatcherRule(
     name: QualifiedName,
     description: String,
     matcher: FormulaMatcher,
-    replacer: RefFormulaContext.() -> Formula
+    replacer: RefFormulaScope.() -> Formula
 ) : MatcherRule(name, description, matcher, replacer), LogicRule {
     override fun applyIncremental(
         context: FormulaContext,
@@ -77,14 +76,14 @@ open class LogicMatcherRule(
     }
 }
 
-open class LogicDefRule(
+open class LogicEquivRule(
     name: QualifiedName,
     description: String,
     m1: FormulaMatcher,
-    r1: RefFormulaContext.() -> Formula,
+    r1: RefFormulaScope.() -> Formula,
     m2: FormulaMatcher,
-    r2: RefFormulaContext.() -> Formula
-) : MatcherDefRule(name, description, m1, r1, m2, r2), LogicRule {
+    r2: RefFormulaScope.() -> Formula
+) : MatcherEquivRule(name, description, m1, r1, m2, r2), LogicRule {
     override fun applyIncremental(
         context: FormulaContext,
         obtained: SortedSet<Formula>,
@@ -180,23 +179,23 @@ object LogicRules {
     }
 
     private fun of(
-        matcher: FormulaMatcherContext.() -> FormulaMatcher, replacer: RefFormulaContext.() -> Formula,
+        matcher: FormulaMatcherContext.() -> FormulaMatcher, replacer: RefFormulaScope.() -> Formula,
         name: String, description: String = "None"
     ): LogicRule {
         return LogicMatcherRule(nameOf(name), description, buildMatcher(matcher), replacer)
     }
 
     private fun def(
-        p: SimpleFormulaContext.() -> Formula,
-        q: SimpleFormulaContext.() -> Formula,
+        p: SimpleFormulaScope.() -> Formula,
+        q: SimpleFormulaScope.() -> Formula,
         name: String, description: String = "None"
     ): LogicRule {
         val f1 = buildFormula(p)
         val f2 = buildFormula(q)
-        val m1 = FormulaMatcher.fromFormula(f1)
-        val m2 = FormulaMatcher.fromFormula(f2)
+        val m1 = FormulaMatcher.fromFormula(f1,false)
+        val m2 = FormulaMatcher.fromFormula(f2,false)
 
-        fun renameAndReplace(f: Formula): (RefFormulaContext.() -> Formula) = {
+        fun renameAndReplace(f: Formula): (RefFormulaScope.() -> Formula) = {
             val renamed = f.regularizeQualifiedVar(unusedVars().iterator())
             renamed.replaceVar { v ->
                 termContext.context[v.name]?.term!!
@@ -207,7 +206,7 @@ object LogicRules {
 
         val r1 = renameAndReplace(f2)
         val r2 = renameAndReplace(f1)
-        return LogicDefRule(nameOf(name), description, m1, r1, m2, r2)
+        return LogicEquivRule(nameOf(name), description, m1, r1, m2, r2)
     }
 
 
@@ -501,6 +500,9 @@ object LogicRules {
 
     /**
      * A rule that tries to apply all the viable logic rules for multiple steps.
+     *
+     * The result will contain additional information named as 'DeductionTree', which is
+     * a `DeductionNode`.
      */
     object AllLogicRule : Rule {
 
@@ -589,7 +591,7 @@ object LogicRules {
     }
 
     fun rulesAsMap(): Map<QualifiedName, Rule>{
-        println(Rules)
+//        println(Rules)
         val rules = Rules + AllLogicRule
         val map = mutableMapOf<QualifiedName, Rule>()
         for (r in rules) {

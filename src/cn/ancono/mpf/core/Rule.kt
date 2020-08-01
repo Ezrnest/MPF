@@ -1,6 +1,6 @@
 package cn.ancono.mpf.core
 
-import cn.ancono.mpf.builder.RefFormulaContext
+import cn.ancono.mpf.builder.RefFormulaScope
 import cn.ancono.mpf.matcher.FormulaMatcher
 
 /*
@@ -70,7 +70,7 @@ sealed class TowardResult
 
 
 data class Reached(val result: Deduction) : TowardResult() {
-    constructor(r: Rule,f: Formula, dependencies: List<Formula>, moreInfo: Map<String, Any> = emptyMap()) : this(
+    constructor(r: Rule, f: Formula, dependencies: List<Formula>, moreInfo: Map<String, Any> = emptyMap()) : this(
         Deduction(
             r,
             f,
@@ -87,7 +87,7 @@ data class NotReached(val results: List<Deduction>) : TowardResult()
 open class MatcherRule(
     override val name: QualifiedName,
     override val description: String,
-    val matcher: FormulaMatcher, protected val replacer: RefFormulaContext.() -> Formula
+    val matcher: FormulaMatcher, protected val replacer: RefFormulaScope.() -> Formula
 ) : Rule {
     override fun applyToward(
         context: FormulaContext,
@@ -101,7 +101,7 @@ open class MatcherRule(
             val f = fs[i]
             val replaced = applyOne(f)
             for (r in replaced) {
-                val re = Deduction(this,desiredResult, listOf(f))
+                val re = Deduction(this, desiredResult, listOf(f))
                 if (r.isIdentityTo(desiredResult)) {
                     return Reached(re)
                 }
@@ -126,31 +126,31 @@ open class MatcherRule(
         return context.formulas.flatMap {
             val ctx = listOf(it)
             applyOne(it).asIterable().map { r ->
-                Deduction(this,r, ctx)
+                Deduction(this, r, ctx)
             }
         }
     }
 }
 
 
-open class MatcherDefRule(
+open class MatcherEquivRule(
     name: QualifiedName,
     description: String,
-    m1: FormulaMatcher, r1: RefFormulaContext.() -> Formula,
-    val m2: FormulaMatcher, private val r2: RefFormulaContext.() -> Formula
+    m1: FormulaMatcher, r1: RefFormulaScope.() -> Formula,
+    val m2: FormulaMatcher, private val r2: RefFormulaScope.() -> Formula
 ) : MatcherRule(name, description, m1, r1) {
 
 
     override fun applyOne(f: Formula): List<Formula> {
         val re = arrayListOf<Formula>()
 
-        fun replaceAndAdd(m: FormulaMatcher, r: RefFormulaContext.() -> Formula) {
+        fun replaceAndAdd(m: FormulaMatcher, r: RefFormulaScope.() -> Formula) {
             for (t in m.replaceOne(f, r)) {
                 if (re.all { !it.isIdentityTo(t) }) {
                     re.add(t)
                 }
             }
-            val t = matcher.replaceAll(f, r)
+            val t = m.replaceAll(f, r)
 
             if (!t.isIdentityTo(f)) {
                 if (re.all { !it.isIdentityTo(t) }) {
@@ -164,4 +164,24 @@ open class MatcherDefRule(
         return re
     }
 
+    companion object {
+        fun fromFormulas(name: QualifiedName, named: Formula, expr: Formula, description: String = "None"): MatcherEquivRule {
+
+            val m1 = FormulaMatcher.fromFormula(named,true)
+            val m2 = FormulaMatcher.fromFormula(expr,true)
+
+            fun renameAndReplace(f: Formula): (RefFormulaScope.() -> Formula) = {
+                val renamed = f.regularizeQualifiedVar(unusedVars().iterator())
+                renamed.replaceVar { v ->
+                    termContext.context[v.name]?.term!!
+                }.replaceNamed { nf ->
+                    formulas[nf.name.fullName]!!.build(nf.parameters)
+                }
+            }
+
+            val r1 = renameAndReplace(expr)
+            val r2 = renameAndReplace(named)
+            return MatcherEquivRule(name, description, m1, r1, m2, r2)
+        }
+    }
 }

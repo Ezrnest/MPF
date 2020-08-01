@@ -2,6 +2,7 @@ package test
 
 import cn.ancono.mpf.core.Variable
 import cn.ancono.mpf.builder.buildFormula
+import cn.ancono.mpf.structure.ZFC
 import kotlin.test.assertTrue
 
 
@@ -31,10 +32,10 @@ object FormulaTest {
     }
 
     fun test2() {
-        val f = buildFormula {
+        val f = ZFC.buildFormula {
             forAny(x) { exist(y) { x belongTo y } }
         }
-        val g = buildFormula {
+        val g = ZFC.buildFormula {
             forAny(y) { exist(x) { y belongTo x } }
         }
 //        println(f)
@@ -89,7 +90,7 @@ object FormulaTest {
     }
 
     fun testRegularForm2() {
-        val f = buildFormula {
+        val f = ZFC.buildFormula {
             forAny(x) {
                 (x belongTo A) implies (x belongTo B)
             } and

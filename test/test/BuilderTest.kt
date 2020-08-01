@@ -1,6 +1,7 @@
 package test
 
 import cn.ancono.mpf.builder.buildFormula
+import cn.ancono.mpf.structure.ZFC
 
 
 /*
@@ -8,7 +9,7 @@ import cn.ancono.mpf.builder.buildFormula
  */
 object BuilderTest {
     fun test1() {
-        val f = buildFormula {
+        val f = ZFC.buildFormula {
             forAny(x) {
                 (x belongTo A) implies (x belongTo B)
             } equivTo "contains".p(A, B)

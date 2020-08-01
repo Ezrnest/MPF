@@ -41,5 +41,12 @@ class QualifiedName(val displayName : String, val fullName : String) : Comparabl
             }
             return QualifiedName(name,fullname)
         }
+
+        fun parseQualified(fullName: String) : QualifiedName{
+            val idx = fullName.lastIndexOf('.')
+            val name = fullName.substring(idx+1)
+            require(name.isNotBlank())
+            return QualifiedName(name,fullName)
+        }
     }
 }

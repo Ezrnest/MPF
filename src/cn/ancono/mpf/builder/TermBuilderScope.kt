@@ -8,7 +8,7 @@ import cn.ancono.mpf.matcher.TMap
 /*
  * Created by liyicheng at 2020-04-07 17:56
  */
-abstract class TermBuilderContext {
+abstract class TermBuilderScope {
 
 //    val x =
 
@@ -41,7 +41,7 @@ abstract class TermBuilderContext {
     }
 }
 
-object SimpleTermContext : TermBuilderContext() {
+object SimpleTermScope : TermBuilderScope() {
     @JvmField
     val a = "a".v
 
@@ -71,9 +71,12 @@ object SimpleTermContext : TermBuilderContext() {
 
     @JvmField
     val Y = "Y".v
+
+
+
 }
 
-class RefTermContext(val context: TMap) : TermBuilderContext() {
+class RefTermScope(val context: TMap) : TermBuilderScope() {
 
     val usedVariables : Set<Variable>
     init{
@@ -114,6 +117,6 @@ class RefTermContext(val context: TMap) : TermBuilderContext() {
     }
 }
 
-fun buildTerm(builderAction: TermBuilderContext.() -> Term): Term = builderAction(
-    SimpleTermContext
+fun buildTerm(builderAction: TermBuilderScope.() -> Term): Term = builderAction(
+    SimpleTermScope
 )

@@ -2,6 +2,7 @@ package test
 
 import cn.ancono.mpf.builder.buildFormula
 import cn.ancono.mpf.core.*
+import cn.ancono.mpf.structure.ZFC
 import test.RuleTest.testLogic
 import test.RuleTest.testLogic2
 import test.RuleTest.testLogic3
@@ -29,12 +30,12 @@ object RuleTest {
     }
 
     fun testLogic2(){
-        val f = buildFormula {
+        val f = ZFC.buildFormula {
             (a equalTo b) and forAny(x){
                 !(x belongTo a)
             }
         }
-        val g = buildFormula {
+        val g = ZFC.buildFormula {
             forAny(y){
                 !(y belongTo b)
             }
@@ -57,7 +58,7 @@ object RuleTest {
     }
 
     fun testLogic4(){
-        val f = buildFormula {
+        val f = ZFC.buildFormula {
             forAny(x){
                 (x belongTo A) implies (x belongTo B)
             } and
@@ -65,34 +66,52 @@ object RuleTest {
                 (x belongTo B) implies (x belongTo A)
             }
         }
-        println(f)
+        println("f: $f")
 //        println(f.flatten())
-        val g = buildFormula {
+        val g = ZFC.buildFormula {
             forAny(x){
                 ((x belongTo A) implies (x belongTo B)) and
                         ((x belongTo B) implies (x belongTo A))
             }
         }
-        val h = buildFormula {
+        val h =ZFC.buildFormula {
             forAny(x){
                 (x belongTo A) equivTo (x belongTo B)
             }
         }
-        println(g)
-        val rec = LogicRules.RuleForAnyAnd
-        var re = applyRule(rec,f,g)
-        println(re)
-        re = applyRule(LogicRules.RuleDefEquivTo,g,h)
-        println(re)
-        re = applyRule(rule,f,h)
-        println(re)
+        println("h: $h")
+//        val rec = LogicRules.RuleForAnyAnd
+//        var re = applyRule(rec,f,g)
+//        println(re)
+//        re = applyRule(LogicRules.RuleDefEquivTo,g,h)
+//        println(re)
+        val re = applyRule(rule,f,h)
+        assertTrue { re is Reached }
         if (re is Reached) {
-            for (d in re.result.dependencies) {
-                println(d)
+            val de = re.result
+            val tree = de.moreInfo["DeductionTree"]
+            if (tree is DeductionNode) {
+                println("Deduction Tree from f to h:")
+                println(tree.toStringAsTree())
             }
         }
     }
 
+    fun testMatcherEquiv(){
+        val rule = ZFC.RuleExtension
+        val f = ZFC.buildFormula {
+            forAny(x) {
+                (x belongTo A) implies (x belongTo B)
+            } and forAny(x) {
+                (x belongTo B) implies (x belongTo A)
+            }
+        }
+        println(f)
+        val g = ZFC.buildFormula {
+            TODO()
+        }
+        rule.applyToward(FormulaContext(listOf(f)), emptyList(), emptyList(),g)
+    }
 }
 
 fun main() {

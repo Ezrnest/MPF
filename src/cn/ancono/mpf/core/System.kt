@@ -1,7 +1,10 @@
 package cn.ancono.mpf.core
 
+import java.lang.IllegalArgumentException
+import java.lang.UnsupportedOperationException
 
-class RuleHints(val ruleName : QualifiedName){
+
+class RuleHints(val ruleName: QualifiedName) {
 
 }
 
@@ -22,40 +25,105 @@ class RuleHints(val ruleName : QualifiedName){
  *
  * Created by liyicheng at 2020-06-09 15:43
  */
-class System(val structure : Structure){
+class System(val baseStructure: Structure) {
     val contextStack = arrayListOf<Context>()
 
-    init{
-        contextStack.add(Context())
+    init {
+        contextStack.add(Context(MutableStructure.of(baseStructure)))
     }
-
-    val context : Context
-        get() = contextStack.last()
-
 
     /**
-     * Create
+     * Gets the current context.
      */
-    fun assumeContext(fs : List<Formula>){
-        //TODO
+    val context: Context
+        get() = contextStack.last()
+
+    private fun pushContext(context: Context) {
+        contextStack.add(context)
     }
 
+    private fun popContext(): Context {
+        if (contextStack.size == 1) {
+            throw UnsupportedOperationException("Cannot pop the base context!")
+        }
+        return contextStack.removeAt(contextStack.lastIndex)
+    }
+
+    /**
+     * Create a new context
+     */
+    fun assume(vararg fs: Formula) {
+        val newContext = AssumedContext.from(fs.toList(), context)
+        pushContext(newContext)
+    }
+
+    fun yield(f: Formula): Formula? {
+        val fs = context.formulaContext.formulas
+        val ac = this.context
+        return if (fs.any { it.isIdentityTo(f) }) {
+            val result = if (ac is AssumedContext) {
+                val assumed = ac.assumedFormulas
+                popContext()
+
+                val p = AndFormula(assumed)
+                ImplyFormula(p,f).flatten()
+            }else{
+                f
+            }
+            addFormula(result)
+            result
+        }else{
+            null
+        }
+    }
+
+    /**
+     * Adds a formula obtained to the current context.
+     */
     fun addFormula(f: Formula) {
         context.formulaContext.addFormula(f)
+    }
+    /**
+     * Adds a rule to the current context.
+     */
+    fun addRule(r : Rule){
+        context.structure.addRule(r)
+    }
+
+    /**
+     * Adds a definition to the current context.
+     */
+    fun define(name : QualifiedName, f: Formula, g: Formula, description: String) : Rule{
+        when (f) {
+            is NamedFormula -> {
+                require(f.parameters.all { it is VarTerm })
+            }
+            is PredicateFormula -> {
+                require(f.terms.all { it is VarTerm })
+            }
+            else ->
+                throw IllegalArgumentException()
+
+        }
+
+        val rule = MatcherEquivRule.fromFormulas(name,f,g,description)
+        addRule(rule)
+        return rule
     }
 
     /**
      * Tries to deduce the required formula [f] using the given rule hints.
      */
-    fun deduce(f : Formula, hints : RuleHints) : Deduction?{
+    fun deduce(f: Formula, hints: RuleHints): Deduction? {
+        val structure = context.structure
         val candidate = structure.ruleMap[hints.ruleName]
-        val rules = if(candidate != null){
+        val rules = if (candidate != null) {
             listOf(candidate)
-        }else{
-            structure.defaultRules.values
+        } else {
+            baseStructure.defaultRules.values
         }
         for (rule in rules) {
-            val tr = rule.applyToward(context.formulaContext, emptyList(), emptyList(),f)
+            val tr = rule.applyToward(context.formulaContext, emptyList(), emptyList(), f)
             if (tr is Reached) {
                 addFormula(f)
                 return tr.result
@@ -64,5 +132,6 @@ class System(val structure : Structure){
 
         return null
     }
+
 
 }

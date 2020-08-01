@@ -1,7 +1,7 @@
 package cn.ancono.mpf.matcher
 
-import cn.ancono.mpf.builder.RefFormulaContext
-import cn.ancono.mpf.builder.RefTermContext
+import cn.ancono.mpf.builder.RefFormulaScope
+import cn.ancono.mpf.builder.RefTermScope
 import cn.ancono.mpf.core.*
 import java.lang.UnsupportedOperationException
 
@@ -48,7 +48,7 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
 //    }
 
 
-    open fun replaceOne(f: Formula, builderAction: RefFormulaContext.() -> Formula?): List<Formula> {
+    open fun replaceOne(f: Formula, builderAction: RefFormulaScope.() -> Formula?): List<Formula> {
         return f.recurMapMulti {
             val res = match(it, null)
             val result = ArrayList<Formula>(res.size)
@@ -62,10 +62,10 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
         }
     }
 
-    fun <T> replaceOneWith(f : Formula, builderAction: RefFormulaContext.() -> Pair<Formula,T>?) : List<Pair<Formula,T>>{
+    fun <T> replaceOneWith(f: Formula, builderAction: RefFormulaScope.() -> Pair<Formula, T>?): List<Pair<Formula, T>> {
         return f.recurMapMultiWith {
             val res = match(it, null)
-            val result = ArrayList<Pair<Formula,T>>(res.size)
+            val result = ArrayList<Pair<Formula, T>>(res.size)
             for (re in res) {
                 val t = re.replaceWith(builderAction)
                 if (t != null) {
@@ -76,7 +76,7 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
         }
     }
 
-    open fun replaceAll(f: Formula, builderAction: RefFormulaContext.() -> Formula): Formula {
+    open fun replaceAll(f: Formula, builderAction: RefFormulaScope.() -> Formula): Formula {
         return f.recurMap {
             val re = match(it, null)
             if (re.isEmpty()) {
@@ -92,14 +92,18 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
         /**
          * Construct a formula matcher from a formula. This method will
          * convert named formula to formula reference, and convert all the
-         * other types of formulas to corresponding types of formula mathcers.
+         * other types of formulas to corresponding types of formula matchers.
+         *
+         * @param keepNamed whether named formula should be interpreted simply as named
+         * formula or as referred formulas in the matcher. If it is `true`, then only
+         * formula with exactly the same name will be matched.
          */
-        fun fromFormula(f: Formula): FormulaMatcher {
+        fun fromFormula(f: Formula, keepNamed: Boolean = true): FormulaMatcher {
             when (f) {
                 is NamedFormula -> {
-//                    if (f.parameters.isEmpty()) {
-//                        return SimpleRefFormulaMatcher(f.name.fullName)
-//                    }
+                    if (keepNamed) {
+                        return NamedFormulaMatcher(f.name, f.parameters.map { TermMatcher.fromTerm(it) })
+                    }
                     return VarRefFormulaMatcher(f.name.fullName, f.parameters.map { t ->
                         if (t !is VarTerm) {
                             throw UnsupportedOperationException("Named formula with non-variable term is not supported.")
@@ -110,19 +114,19 @@ interface FormulaMatcher : Matcher<Formula, FormulaResult> {
                 is PredicateFormula ->
                     return PredicateFormulaMatcher(f.p, f.terms.map { TermMatcher.fromTerm(it) }, f.p.ordered)
                 is ForAnyFormula ->
-                    return ForAnyFormulaMatcher(f.v.name, fromFormula(f.child))
+                    return ForAnyFormulaMatcher(f.v.name, fromFormula(f.child, keepNamed))
                 is ExistFormula ->
-                    return ExistFormulaMatcher(f.v.name, fromFormula(f.child))
+                    return ExistFormulaMatcher(f.v.name, fromFormula(f.child, keepNamed))
                 is NotFormula ->
-                    return NotFormulaMatcher(fromFormula(f.child))
+                    return NotFormulaMatcher(fromFormula(f.child, keepNamed))
                 is ImplyFormula ->
-                    return ImplyFormulaMatcher(fromFormula(f.child1), fromFormula(f.child2))
+                    return ImplyFormulaMatcher(fromFormula(f.child1, keepNamed), fromFormula(f.child2, keepNamed))
                 is EquivalentFormula ->
-                    return EquivalentFormulaMatcher(fromFormula(f.child1), fromFormula(f.child2))
+                    return EquivalentFormulaMatcher(fromFormula(f.child1, keepNamed), fromFormula(f.child2, keepNamed))
                 is AndFormula ->
-                    return AndFormulaMatcher(f.children.map { fromFormula(it) }, EmptyMatcher)
+                    return AndFormulaMatcher(f.children.map { fromFormula(it, keepNamed) }, EmptyMatcher)
                 is OrFormula ->
-                    return OrFormulaMatcher(f.children.map { fromFormula(it) }, EmptyMatcher)
+                    return OrFormulaMatcher(f.children.map { fromFormula(it, keepNamed) }, EmptyMatcher)
 //                else->
 //                    throw UnsupportedOperationException()
             }
@@ -136,32 +140,32 @@ class FormulaResult(
     val varMap: TMap
 ) : MatchResult {
 
-    fun get(name : String) : Formula{
-        return formulaMap[name]?.formula?:throw NoSuchElementException()
+    fun get(name: String): Formula {
+        return formulaMap[name]?.formula ?: throw NoSuchElementException()
     }
 
-    fun replace(builderAction: RefFormulaContext.() -> Formula?): Formula? {
+    fun replace(builderAction: RefFormulaScope.() -> Formula?): Formula? {
         val context = toBuilderContext()
         return builderAction(context)?.flatten()
     }
 
-    fun <T> replaceWith(builderAction: RefFormulaContext.() -> Pair<Formula,T>?) : Pair<Formula,T>?{
+    fun <T> replaceWith(builderAction: RefFormulaScope.() -> Pair<Formula, T>?): Pair<Formula, T>? {
         val context = toBuilderContext()
-        val (f,t) = builderAction(context)?:return null
+        val (f, t) = builderAction(context) ?: return null
         return f.flatten() to t
     }
 
 
-    fun replaceNonNull(builderAction: RefFormulaContext.() -> Formula): Formula {
+    fun replaceNonNull(builderAction: RefFormulaScope.() -> Formula): Formula {
         val context = toBuilderContext()
         return builderAction(context).flatten()
     }
 
 
-    fun toBuilderContext(): RefFormulaContext =
-        RefFormulaContext(
+    fun toBuilderContext(): RefFormulaScope =
+        RefFormulaScope(
             formulaMap,
-            RefTermContext(varMap)
+            RefTermScope(varMap)
         )
 
     override fun toString(): String = buildString {
@@ -441,15 +445,38 @@ class VarRefFormulaMatcher(
     }
 }
 
-class NamedFormulaMatcher(val name: QualifiedName) :
+class NamedFormulaMatcher(
+    val name: QualifiedName,
+    val termMatchers: List<TermMatcher>,
+    val ordered: Boolean = true
+) :
     FormulaMatcher {
+//    override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult> {
+//        val (formulaMap, varMap) = previousResult.destructed
+//        return if (x is NamedFormula && x.name == name) {
+//            listOf(FormulaResult(formulaMap, varMap))
+//        } else {
+//            emptyList()
+//        }
+//    }
+
     override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult> {
         val (formulaMap, varMap) = previousResult.destructed
-        return if (x is NamedFormula && x.name == name) {
-            listOf(FormulaResult(formulaMap, varMap))
-        } else {
-            emptyList()
+        if (x !is NamedFormula || x.name != name) {
+            return emptyList()
         }
+        val results = if (ordered) {
+            MatcherUtil.orderedMatch(
+                x.parameters, termMatchers,
+                TermMatchResult(varMap)
+            )
+        } else {
+            MatcherUtil.unorderedMatch(
+                x.parameters, termMatchers,
+                TermMatchResult(varMap)
+            )
+        }
+        return results.map { r -> FormulaResult(formulaMap, varMap + r.varMap) }
     }
 
 }

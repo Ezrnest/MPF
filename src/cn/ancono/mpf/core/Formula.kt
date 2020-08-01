@@ -645,6 +645,15 @@ class NotFormula(child: Formula) : UnaryFormula(child) {
     override fun recurMapTerm(f: (Term) -> Term): Formula {
         return NotFormula(child.recurMapTerm(f))
     }
+
+    override fun flatten(): Formula {
+        val c = child.flatten()
+        return if (c is NotFormula) {
+            c.child
+        }else{
+            NotFormula(c)
+        }
+    }
 }
 
 sealed class MultiFormula(children: List<Formula>) : CombinedFormula(children, false) {
