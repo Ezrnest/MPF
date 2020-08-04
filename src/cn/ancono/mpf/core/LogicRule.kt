@@ -56,8 +56,8 @@ open class LogicMatcherRule(
             val replaced = applyOne(f)
             val ctx = listOf(f)
             for (g in replaced) {
-                val re = Deduction(this,g, ctx)
-                if (g.isIdentityTo(desiredResult)) {
+                val re = Deduction(this, g, ctx)
+                if (g.isIdenticalTo(desiredResult)) {
                     return Reached(re)
                 }
                 results.add(re)
@@ -96,8 +96,8 @@ open class LogicEquivRule(
             val replaced = applyOne(f)
             val ctx = listOf(f)
             for (g in replaced) {
-                val re = Deduction(this,g, ctx)
-                if (g.isIdentityTo(desiredResult)) {
+                val re = Deduction(this, g, ctx)
+                if (g.isIdenticalTo(desiredResult)) {
                     return Reached(re)
                 }
                 results.add(re)
@@ -144,17 +144,17 @@ object LogicRules {
             val results = ArrayList<Deduction>(fs.size)
             for ((fr, f) in context.regularForms) {
                 val f1 = fr.flatten()
-                if (f1.isIdentityTo(flattened)) {
-                    return Reached(this,desiredResult, listOf(f))
+                if (f1.isIdenticalTo(flattened)) {
+                    return Reached(this, desiredResult, listOf(f))
                 }
-                results += Deduction(this,f1, listOf(f))
+                results += Deduction(this, f1, listOf(f))
             }
 
             return NotReached(results)
         }
 
         override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Deduction> {
-            return context.formulas.map { Deduction(this,it.flatten(), listOf(it)) }
+            return context.formulas.map { Deduction(this, it.flatten(), listOf(it)) }
         }
 
         override fun applyIncremental(
@@ -168,10 +168,10 @@ object LogicRules {
             val flattened = desiredResult.flatten().regularForm
             for (f in obtained) {
                 val f1 = f.flatten().regularForm
-                if (f1.isIdentityTo(flattened)) {
-                    return Reached(this,desiredResult, listOf(f))
+                if (f1.isIdenticalTo(flattened)) {
+                    return Reached(this, desiredResult, listOf(f))
                 }
-                results += Deduction(this,f1, listOf(f))
+                results += Deduction(this, f1, listOf(f))
             }
 
             return NotReached(results)
@@ -192,8 +192,8 @@ object LogicRules {
     ): LogicRule {
         val f1 = buildFormula(p)
         val f2 = buildFormula(q)
-        val m1 = FormulaMatcher.fromFormula(f1,false)
-        val m2 = FormulaMatcher.fromFormula(f2,false)
+        val m1 = FormulaMatcher.fromFormula(f1, false)
+        val m2 = FormulaMatcher.fromFormula(f2, false)
 
         fun renameAndReplace(f: Formula): (RefFormulaScope.() -> Formula) = {
             val renamed = f.regularizeQualifiedVar(unusedVars().iterator())
@@ -239,7 +239,7 @@ object LogicRules {
                 val ctx = children.map { c ->
                     context.regularForms[c.regularForm]!!
                 }
-                return Reached(this,desiredResult, ctx)
+                return Reached(this, desiredResult, ctx)
             }
             return NotReached(emptyList())
         }
@@ -262,9 +262,9 @@ object LogicRules {
             if (children.all { context.regularForms.contains(it) || obtained.contains(it) }) {
                 val allContext = context.formulas.asSequence() + obtained.asSequence()
                 val ctx = children.map { c ->
-                    allContext.first { f -> c.isIdentityTo(f) }
+                    allContext.first { f -> c.isIdenticalTo(f) }
                 }
-                return Reached(this,desiredResult, ctx)
+                return Reached(this, desiredResult, ctx)
             }
             return NotReached(emptyList())
         }
@@ -318,12 +318,12 @@ object LogicRules {
             val rf = context.regularForms
             val results = buildResults(obtained, rf)
             for (re in results) {
-                if (re.first.regularForm.isIdentityTo(dr)) {
-                    return Reached(this,re.first, listOf(re.second))
+                if (re.first.regularForm.isIdenticalTo(dr)) {
+                    return Reached(this, re.first, listOf(re.second))
                 }
             }
             return NotReached(results.map {
-                Deduction(this,it.first, listOf(it.second))
+                Deduction(this, it.first, listOf(it.second))
             })
         }
 
@@ -335,7 +335,7 @@ object LogicRules {
         override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Deduction> {
             val rf = context.regularForms
             return buildResults(context.formulas, rf).map {
-                Deduction(this,it.first, listOf(it.second))
+                Deduction(this, it.first, listOf(it.second))
             }
         }
     }
@@ -367,7 +367,7 @@ object LogicRules {
         ): TowardResult {
             val matchResults = matcher.match(desiredResult)
             if (matchResults.isNotEmpty()) {
-                return Reached(this,desiredResult, emptyList())
+                return Reached(this, desiredResult, emptyList())
             }
             return NotReached(emptyList())
         }
@@ -379,25 +379,18 @@ object LogicRules {
             }
             return formulas.map { f ->
                 val nf = buildFormula { f or !f }
-                Deduction(this,nf, emptyList())
+                Deduction(this, nf, emptyList())
             }
         }
     }
 
     object RuleExistConstant : LogicRule {
 
+        val KEY_CONSTANT = "constant"
+
         override val name: QualifiedName = nameOf("ExistConstant")
         override val description: String
             get() = "phi(c) => exist[x] phi(x)"
-
-        private fun apply(f: Formula): List<Pair<Formula, Constant>> {
-            val constants = f.allConstants()
-            val newVariable = Formula.nextVar(f)
-            val varTerm = VarTerm(newVariable)
-            return constants.map { c ->
-                buildFromConstant(f, c, newVariable, varTerm)
-            }
-        }
 
         private fun buildFromConstant(f: Formula, c: Constant, nv: Variable, vt: VarTerm): Pair<Formula, Constant> {
             val sub = f.recurMapTerm { t ->
@@ -434,11 +427,11 @@ object LogicRules {
                 for (c in constants) {
                     val (rf, constant) = buildFromConstant(f, c, newVariable, varTerm)
                     val regular = rf.regularForm
-                    if (regular.isIdentityTo(desiredResult.regularForm)) {
-                        return Reached(this,desiredResult, listOf(f), mapOf("constant" to constant))
+                    if (regular.isIdenticalTo(desiredResult.regularForm)) {
+                        return Reached(this, desiredResult, listOf(f), mapOf(KEY_CONSTANT to constant))
                     }
                     if (regular !in obtained) {
-                        val result = Deduction(this,rf, listOf(f), mapOf("constant" to constant))
+                        val result = Deduction(this, rf, listOf(f), mapOf(KEY_CONSTANT to constant))
                         allResults.add(result)
                     }
                 }
@@ -462,7 +455,7 @@ object LogicRules {
                 }
                 for (c in constants) {
                     val (rf, constant) = buildFromConstant(f, c, newVariable, varTerm)
-                    val result = Deduction(this,rf, listOf(f), mapOf("constant" to constant))
+                    val result = Deduction(this, rf, listOf(f), mapOf(KEY_CONSTANT to constant))
                     allResults.add(result)
                 }
 
@@ -471,10 +464,76 @@ object LogicRules {
         }
     }
 
-    val RuleForAnyAnd = def({ forAny(x) { "phi".n(x) } and forAny(y) { "psi".n(y) } },
+    object RuleForAnyVariable : LogicRule {
+        override val name: QualifiedName = nameOf("ForAnyVariable")
+        val KEY_VARIABLE = "variable"
+
+        override val description: String
+            get() = "phi(x) => any[x] phi(x)"
+
+        private fun buildFromVar(f: Formula, v: Variable): Formula {
+            return ExistFormula(f, v)
+        }
+
+        override fun applyIncremental(
+            context: FormulaContext,
+            obtained: SortedSet<Formula>,
+            formulas: List<Formula>,
+            terms: List<Term>,
+            desiredResult: Formula
+        ): TowardResult {
+            // apply to the given variable if exists
+            val givenVariables = terms.filterIsInstance<VarTerm>().map { it.v }
+
+            val allResults = arrayListOf<Deduction>()
+            for (f in context.formulas + obtained.toList()) {
+                var variables = f.variables
+                if (givenVariables.isNotEmpty()) {
+                    variables = variables.intersect(givenVariables)
+                }
+                for (v in variables) {
+                    val rf = buildFromVar(f, v)
+                    val regular = rf.regularForm
+                    if (regular.isIdenticalTo(desiredResult.regularForm)) {
+                        return Reached(this, desiredResult, listOf(f), mapOf(KEY_VARIABLE to v))
+                    }
+                    if (regular !in obtained) {
+                        val result = Deduction(this, rf, listOf(f), mapOf(KEY_VARIABLE to v))
+                        allResults.add(result)
+                    }
+                }
+
+            }
+            return NotReached(allResults)
+        }
+
+
+        override fun apply(context: FormulaContext, formulas: List<Formula>, terms: List<Term>): List<Deduction> {
+            val givenVariables = terms.filterIsInstance<VarTerm>().map { it.v }
+
+            val allResults = arrayListOf<Deduction>()
+            for (f in context.formulas) {
+                var variables = f.variables
+                if (givenVariables.isNotEmpty()) {
+                    variables = variables.intersect(givenVariables)
+                }
+                for (v in variables) {
+                    val rf = buildFromVar(f, v)
+                    val result = Deduction(this, rf, listOf(f), mapOf(KEY_VARIABLE to v))
+                    allResults.add(result)
+                }
+
+            }
+            return allResults
+        }
+    }
+
+    val RuleForAnyAnd = def(
+        { forAny(x) { "phi".n(x) } and forAny(y) { "psi".n(y) } },
         { forAny(z) { "phi".n(z) and "psi".n(z) } },
         "ForAnyAnd",
-        "any[x](phi(x)) and any[y](psi(y)) <=> any[z](phi(z) and psi(z))")
+        "any[x](phi(x)) and any[y](psi(y)) <=> any[z](phi(z) and psi(z))"
+    )
 
     /**
      * The list of all the logic rules.
@@ -527,15 +586,15 @@ object LogicRules {
             val reached = TreeMap<Formula, DeductionNode>(FormulaComparator)
             // the map of an obtained formula and the deduction chain
             for (en in context.regularForms) {
-                reached[en.key] = DeductionNode(Deduction(this,en.key,listOf(en.value)), emptyList())
+                reached[en.key] = DeductionNode(Deduction(this, en.key, listOf(en.value)), emptyList())
             }
 
-            fun buildNodeFrom(re : Deduction) : DeductionNode{
+            fun buildNodeFrom(re: Deduction): DeductionNode {
 
                 val subNodes = re.dependencies.map {
                     reached[it.regularForm]!!
                 }
-                return DeductionNode(re,subNodes)
+                return DeductionNode(re, subNodes)
             }
 
             var obtained: SortedSet<Formula> = TreeSet(reached.navigableKeySet()) // formulas obtained in each loop
@@ -559,7 +618,7 @@ object LogicRules {
                             val moreInfo = mapOf(
                                 "DeductionTree" to tree
                             )
-                            return Reached(this,desiredResult, context.toList(), moreInfo)
+                            return Reached(this, desiredResult, context.toList(), moreInfo)
                         }
                         is NotReached -> {
                             for (re in towardResult.results) {
@@ -590,7 +649,7 @@ object LogicRules {
 
     }
 
-    fun rulesAsMap(): Map<QualifiedName, Rule>{
+    fun rulesAsMap(): Map<QualifiedName, Rule> {
 //        println(Rules)
         val rules = Rules + AllLogicRule
         val map = mutableMapOf<QualifiedName, Rule>()

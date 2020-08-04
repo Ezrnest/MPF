@@ -2,7 +2,6 @@ package cn.ancono.mpf.kt
 
 import cn.ancono.mpf.builder.FormulaBuilderScope
 import cn.ancono.mpf.builder.TermBuilderScope
-import cn.ancono.mpf.builder.buildFormula
 import cn.ancono.mpf.core.*
 
 
@@ -12,7 +11,7 @@ import cn.ancono.mpf.core.*
 typealias FormulaBuilder<R> = R.() -> Formula
 
 /**
- * @author liyicheng
+ *
  */
 class DeductionScope<T : TermBuilderScope, R : FormulaBuilderScope<T>>
     (val system: System,
@@ -32,11 +31,11 @@ class DeductionScope<T : TermBuilderScope, R : FormulaBuilderScope<T>>
         println(s)
     }
 
-    fun de(name: String = "", fb: FormulaBuilder<R>): Formula {
+    fun de(rule: String = "", fb: FormulaBuilder<R>): Formula {
         val f = buildFormula(fb)
-        val d = system.deduce(f, RuleHints(QualifiedName(name)))
-            ?: throw FailedToDeduceException("Cannot deduce $f by $name")
-        printWithIndent("Get: $d")
+        val d = system.deduce(f, RuleHints(QualifiedName(rule)))
+            ?: throw FailedToDeduceException("Cannot deduce $f by $rule")
+        printWithIndent("Get: ${d.f}    | by '${d.r.name.displayName}'")
         return d.f
     }
 

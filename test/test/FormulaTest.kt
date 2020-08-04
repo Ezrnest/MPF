@@ -41,7 +41,7 @@ object FormulaTest {
 //        println(f)
 //        println(g)
         assertTrue {
-            f.isIdentityTo(g)
+            f.isIdenticalTo(g)
         }
     }
 
@@ -57,7 +57,7 @@ object FormulaTest {
             }
         }
         assertTrue {
-            expected.isIdentityTo(f.renameVar(mapOf(Variable("a") to Variable("b"))))
+            expected.isIdenticalTo(f.renameVar(mapOf(Variable("a") to Variable("b"))))
         }
     }
 

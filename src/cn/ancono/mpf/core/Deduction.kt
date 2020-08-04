@@ -23,7 +23,7 @@ class Deduction(
 ) {
 
     override fun toString(): String {
-        return "${f}  | by '${r.name.displayName}' with $dependencies"
+        return "$f ; by '${r.name.displayName}' with $dependencies"
     }
 }
 
@@ -32,6 +32,12 @@ class DeductionNode(
     val deduction: Deduction,
     override val children: List<DeductionNode>
 ) : Node<DeductionNode> {
+
+    override fun recurMap(f: (DeductionNode) -> DeductionNode): DeductionNode {
+        val mappedChildren = children.map { c -> c.recurMap(f)}
+        val mapped = DeductionNode(deduction,mappedChildren)
+        return f(mapped)
+    }
 
     fun appendTo(sb: StringBuilder, level: Int, indent: Int) {
         repeat(level * indent) {

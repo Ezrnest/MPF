@@ -40,11 +40,20 @@ sealed class Formula : Node<Formula> {
     abstract override val childCount: Int
 
     /**
-     * Gets all the variables appearing in this formula.
+     * Gets all the variables appearing in this formula, including both bound variables and free variables.
      */
     abstract val allVariables: Set<Variable>
 
-    abstract fun isIdentityTo(other: Formula): Boolean
+    /**
+     * Determines whether this formula is identical to another formula. This method will considers
+     * formulas of the same structure but different bound variables as the same.
+     *
+     * For example, the following two formulas will be considered as identical:
+     *
+     *     ∀xP(x), ∀yP(y)
+     *
+     */
+    abstract fun isIdenticalTo(other: Formula): Boolean
 
 
     /**
@@ -61,7 +70,7 @@ sealed class Formula : Node<Formula> {
      */
     abstract fun <T> recurMapMultiWith(f: (Formula) -> List<Pair<Formula, T>>): List<Pair<Formula, T>>
 
-    abstract fun recurMap(f: (Formula) -> Formula): Formula
+    abstract override fun recurMap(f: (Formula) -> Formula): Formula
 
     /**
      * Recursively applies the given function to all the terms that appear in the formula.
@@ -94,7 +103,7 @@ sealed class Formula : Node<Formula> {
 
 
 
-    internal abstract fun renameQualifiedVar0(
+    internal abstract fun renameBoundVar0(
         nameMap: MutableMap<Variable, Variable>,
         nameProvider: Iterator<Variable>
     ): Formula
@@ -110,7 +119,7 @@ sealed class Formula : Node<Formula> {
      * Renames the qualified variables in this formula using the name provider in order.
      */
     fun regularizeQualifiedVar(nameProvider: Iterator<Variable>): Formula {
-        return renameQualifiedVar0(hashMapOf(), nameProvider)
+        return renameBoundVar0(hashMapOf(), nameProvider)
     }
 
     /**
@@ -256,7 +265,7 @@ sealed class AtomicFormula : Formula(), AtomicNode<Formula> {
         return this
     }
 
-    override fun renameQualifiedVar0(
+    override fun renameBoundVar0(
         nameMap: MutableMap<Variable, Variable>,
         nameProvider: Iterator<Variable>
     ): Formula {
@@ -273,7 +282,7 @@ class PredicateFormula(val p: Predicate, val terms: List<Term>) : AtomicFormula(
     override val allVariables: Set<Variable>
         get() = variables
 
-    override fun isIdentityTo(other: Formula): Boolean {
+    override fun isIdenticalTo(other: Formula): Boolean {
         if (this === other) return true
         if (other !is PredicateFormula) return false
         if (p != other.p) return false
@@ -321,7 +330,7 @@ class NamedFormula(val name: QualifiedName, val parameters: List<Term> = emptyLi
     override val allVariables: Set<Variable>
         get() = variables
 
-    override fun isIdentityTo(other: Formula): Boolean {
+    override fun isIdenticalTo(other: Formula): Boolean {
         if (other !is NamedFormula) {
             return false
         }
@@ -388,14 +397,14 @@ sealed class CombinedFormula(override val children: List<Formula>, val ordered: 
 
     override val allVariables: Set<Variable> by lazy { children.flatMapTo(hashSetOf()) { it.allVariables } }
 
-    override fun isIdentityTo(other: Formula): Boolean {
+    override fun isIdenticalTo(other: Formula): Boolean {
         if (other !is CombinedFormula || this.javaClass != other.javaClass) {
             return false
         }
         return if (ordered) {
-            Utils.collectionEquals(this.children, other.children, Formula::isIdentityTo)
+            Utils.collectionEquals(this.children, other.children, Formula::isIdenticalTo)
         } else {
-            Utils.listEqualsNoOrder(this.children, other.children, Formula::isIdentityTo)
+            Utils.listEqualsNoOrder(this.children, other.children, Formula::isIdenticalTo)
         }
 
     }
@@ -455,11 +464,11 @@ sealed class CombinedFormula(override val children: List<Formula>, val ordered: 
         return copyOf(children.map { it.renameAllVar(renamer) })
     }
 
-    override fun renameQualifiedVar0(
+    override fun renameBoundVar0(
         nameMap: MutableMap<Variable, Variable>,
         nameProvider: Iterator<Variable>
     ): Formula {
-        return copyOf(children.map { it.renameQualifiedVar0(nameMap, nameProvider) })
+        return copyOf(children.map { it.renameBoundVar0(nameMap, nameProvider) })
     }
 
     override fun replaceVar(replacer: (Variable) -> Term): Formula {
@@ -505,21 +514,21 @@ sealed class BinaryFormula(child1: Formula, child2: Formula, ordered: Boolean) :
 
 }
 
-sealed class QualifiedFormula(child: Formula, val v: Variable) :
+sealed class QuantifierFormula(child: Formula, val v: Variable) :
     UnaryFormula(child) {
     override val variables: Set<Variable> by lazy {
         child.variables - v
     }
 
 
-    override fun isIdentityTo(other: Formula): Boolean {
-        if (other !is QualifiedFormula) {
+    override fun isIdenticalTo(other: Formula): Boolean {
+        if (other !is QuantifierFormula) {
             return false
         }
         val c1 = child
         val c2 = other.child
         if (v == other.v) {
-            return c1.isIdentityTo(c2)
+            return c1.isIdenticalTo(c2)
         }
 
         val nv = Variable.getXNNameProvider("$").first {
@@ -528,13 +537,13 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
         }
         val f1 = c1.renameAllVar(mapOf(v to nv))
         val f2 = c2.renameAllVar(mapOf(other.v to nv))
-        return f1.isIdentityTo(f2)
+        return f1.isIdenticalTo(f2)
     }
 
     /**
      * Returns a copy of this qualified formula with exactly the given children and the variable.
      */
-    abstract fun copyOf(child: Formula, v: Variable): QualifiedFormula
+    abstract fun copyOf(child: Formula, v: Variable): QuantifierFormula
 
     override fun copyOf(newChildren: List<Formula>): CombinedFormula {
         require(newChildren.size == 1)
@@ -563,14 +572,14 @@ sealed class QualifiedFormula(child: Formula, val v: Variable) :
         return copyOf(child.renameVar(newRenamer), v)
     }
 
-    override fun renameQualifiedVar0(
+    override fun renameBoundVar0(
         nameMap: MutableMap<Variable, Variable>,
         nameProvider: Iterator<Variable>
     ): Formula {
         val nv = nameProvider.next()
         val original = nameMap[v]
         nameMap[v] = nv
-        val newChild = child.renameQualifiedVar0(nameMap, nameProvider)
+        val newChild = child.renameBoundVar0(nameMap, nameProvider)
         if (original != null) {
             nameMap[v] = original
         }
@@ -713,8 +722,8 @@ class OrFormula(children: List<Formula>) : MultiFormula(children) {
     }
 }
 
-class ForAnyFormula(child: Formula, v: Variable) : QualifiedFormula(child, v) {
-    override fun copyOf(child: Formula, v: Variable): QualifiedFormula {
+class ForAnyFormula(child: Formula, v: Variable) : QuantifierFormula(child, v) {
+    override fun copyOf(child: Formula, v: Variable): QuantifierFormula {
         return ForAnyFormula(child, v)
     }
 
@@ -723,8 +732,8 @@ class ForAnyFormula(child: Formula, v: Variable) : QualifiedFormula(child, v) {
     }
 }
 
-class ExistFormula(child: Formula, v: Variable) : QualifiedFormula(child, v) {
-    override fun copyOf(child: Formula, v: Variable): QualifiedFormula {
+class ExistFormula(child: Formula, v: Variable) : QuantifierFormula(child, v) {
+    override fun copyOf(child: Formula, v: Variable): QuantifierFormula {
         return ExistFormula(child, v)
     }
 

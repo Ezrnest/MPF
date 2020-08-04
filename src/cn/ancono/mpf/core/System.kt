@@ -50,31 +50,38 @@ class System(val baseStructure: Structure) {
     }
 
     /**
-     * Create a new context
+     * Create a new context extending the current with the additional assumed formulas.
+     *
+     * @see [yield]
      */
     fun assume(vararg fs: Formula) {
         val newContext = AssumedContext.from(fs.toList(), context)
         pushContext(newContext)
     }
 
+    /**
+     * Yield a formula based on the current context, this method
+     * will automatically pop the current context if success.
+     *
+     * @return
+     */
     fun yield(f: Formula): Formula? {
         val fs = context.formulaContext.formulas
         val ac = this.context
-        return if (fs.any { it.isIdentityTo(f) }) {
-            val result = if (ac is AssumedContext) {
-                val assumed = ac.assumedFormulas
-                popContext()
-
-                val p = AndFormula(assumed)
-                ImplyFormula(p,f).flatten()
-            }else{
-                f
-            }
-            addFormula(result)
-            result
-        }else{
-            null
+        if (!fs.any { it.isIdenticalTo(f) }) {
+            return null
         }
+        val result = if (ac is AssumedContext) {
+            val assumed = ac.assumedFormulas
+            val p = AndFormula(assumed)
+            ImplyFormula(p, f).flatten()
+        } else {
+            f
+        }
+        popContext()
+        addFormula(result)
+        return result
+
     }
 
     /**
@@ -83,17 +90,18 @@ class System(val baseStructure: Structure) {
     fun addFormula(f: Formula) {
         context.formulaContext.addFormula(f)
     }
+
     /**
      * Adds a rule to the current context.
      */
-    fun addRule(r : Rule){
+    fun addRule(r: Rule) {
         context.structure.addRule(r)
     }
 
     /**
      * Adds a definition to the current context.
      */
-    fun define(name : QualifiedName, f: Formula, g: Formula, description: String) : Rule{
+    fun define(name: QualifiedName, f: Formula, g: Formula, description: String): Rule {
         when (f) {
             is NamedFormula -> {
                 require(f.parameters.all { it is VarTerm })
@@ -106,7 +114,7 @@ class System(val baseStructure: Structure) {
 
         }
 
-        val rule = MatcherEquivRule.fromFormulas(name,f,g,description)
+        val rule = MatcherEquivRule.fromFormulas(name, f, g, description)
         addRule(rule)
         return rule
     }

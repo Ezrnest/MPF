@@ -11,28 +11,34 @@ sealed class Term : Node<Term>, Comparable<Term> {
     abstract override val childCount: Int
 
 
+    /**
+     * Determines whe
+     */
     abstract fun isIdentityTo(t: Term): Boolean
 
-    /**
-     * Applies the mapping function recursively to each term nodes in this term to build a new term.
-     *
-     *
-     * @param m a mapping function that takes the original term and the term whose sub-terms are mapped
-     * as a parameter. If the term has no sub-term, then the two parameters will be the same.
-     *
-     */
-    abstract fun recurMap(m: (origin: Term, mapped: Term) -> Term): Term
 
-    /**
-     * Recursively maps the term and all it sub-terms and build a new term. The function [before] will be
-     * invoked first before mapping the sub-nodes, and the function [after] will be invoked to a term with all sub-terms
-     * mapped. If [before] returns a non-null value, then [after] will not be invoked for the term.
-     *
-     *
-     *
-     *
-     */
-    abstract fun recurMap(before: (Term) -> Term?, after: (Term) -> Term): Term
+    abstract override fun recurMap(f: (Term) -> Term): Term
+
+//    /**
+//     * Applies the mapping function recursively to each term nodes in this term to build a new term.
+//     *
+//     *
+//     * @param m a mapping function that takes the original term and the term whose sub-terms are mapped
+//     * as a parameter. If the term has no sub-term, then the two parameters will be the same.
+//     *
+//     */
+//    abstract fun recurMap(m: (origin: Term, mapped: Term) -> Term): Term
+
+//    /**
+//     * Recursively maps the term and all it sub-terms and build a new term. The function [before] will be
+//     * invoked first before mapping the sub-nodes, and the function [after] will be invoked to a term with all sub-terms
+//     * mapped. If [before] returns a non-null value, then [after] will not be invoked for the term.
+//     *
+//     *
+//     *
+//     *
+//     */
+//    abstract fun recurMap(before: (Term) -> Term?, after: (Term) -> Term): Term
 
     open fun renameVar(renamer: (Variable) -> Variable): Term = replaceVar { VarTerm(renamer(it)) }
 
@@ -59,14 +65,17 @@ abstract class AtomicTerm : Term(), AtomicNode<Term> {
     override val children: List<Term>
         get() = emptyList()
 
-
-    override fun recurMap(m: (origin: Term, mapped: Term) -> Term): Term {
-        return m(this, this)
+    override fun recurMap(f: (Term) -> Term): Term {
+        return f(this)
     }
 
-    override fun recurMap(before: (Term) -> Term?, after: (Term) -> Term): Term {
-        return before(this) ?: after(this)
-    }
+    //    override fun recurMap(m: (origin: Term, mapped: Term) -> Term): Term {
+//        return m(this, this)
+//    }
+
+//    override fun recurMap(before: (Term) -> Term?, after: (Term) -> Term): Term {
+//        return before(this) ?: after(this)
+//    }
 
     override fun toRegularForm(): Term {
         return this
@@ -232,20 +241,26 @@ class FunTerm(val f: Function, args: List<Term>) : CombinedTerm(args) {
     }
 
 
-    override fun recurMap(m: (origin: Term, mapped: Term) -> Term): Term {
-        val nArgs = children.map { it.recurMap(m) }
-        val nTerm = FunTerm(f, nArgs)
-        return m(this, nTerm)
-    }
+//    override fun recurMap(m: (origin: Term, mapped: Term) -> Term): Term {
+//        val nArgs = children.map { it.recurMap(m) }
+//        val nTerm = FunTerm(f, nArgs)
+//        return m(this, nTerm)
+//    }
 
-    override fun recurMap(before: (Term) -> Term?, after: (Term) -> Term): Term {
-        val t = before(this)
-        if (t != null) {
-            return t
-        }
-        val nArgs = children.map { it.recurMap(before, after) }
-        val nTerm = FunTerm(f, nArgs)
-        return after(nTerm)
+//    override fun recurMap(before: (Term) -> Term?, after: (Term) -> Term): Term {
+//        val t = before(this)
+//        if (t != null) {
+//            return t
+//        }
+//        val nArgs = children.map { it.recurMap(before, after) }
+//        val nTerm = FunTerm(f, nArgs)
+//        return after(nTerm)
+//    }
+
+    override fun recurMap(f: (Term) -> Term): Term {
+        val mappedChildren = children.map { c -> c.recurMap(f) }
+        val mapped = this.copyOf(mappedChildren)
+        return f(mapped)
     }
 
     override fun copyOf(newChildren: List<Term>): CombinedTerm {
@@ -277,7 +292,7 @@ class FunTerm(val f: Function, args: List<Term>) : CombinedTerm(args) {
 }
 
 
-fun Term.allConstantsTo(list : MutableList<Constant>){
+fun Term.allConstantsTo(list: MutableList<Constant>) {
     this.recurApply {
         if (it is ConstTerm) {
             list.add(it.c)

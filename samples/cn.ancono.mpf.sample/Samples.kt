@@ -30,11 +30,14 @@ object Samples {
     }
 
     /**
+     * A simple sample of ZFC that deduces
      *
+     *     (contains(A,B)∧contains(B,A)) ↔ equals(A,B)
      */
     fun deduction2(): DeductionScope<ZFCTermScope, ZFCFormulaScope>.() -> Unit = {
         define("DefContains") {
-            A contains B // A contains B
+            // the definition of contains: (A contains B) <=> any[x](x belongTo B) implies (x belongTo A)
+            A contains B
         } with {
             forAny(x) {
                 (x belongTo B) implies (x belongTo A)
@@ -47,24 +50,25 @@ object Samples {
             A equalTo B
         }
         assume(f) {
-            de("DefContains") {
+            // f = (A contains B) and (B contains A)
+            de("DefContains") {//expand the definition of 'contains'
                 forAny(x) {
                     (x belongTo B) implies (x belongTo A)
                 } and forAny(x) {
                     (x belongTo A) implies (x belongTo B)
                 }
             }
-            de {
+            de {//logic
                 forAny(x) {
                     ((x belongTo A) implies (x belongTo B)) and ((x belongTo B) implies (x belongTo A))
                 }
             }
-            de {
+            de {//logic
                 forAny(x) {
                     (x belongTo A) equivTo (x belongTo B)
                 }
             }
-            de("zfc.RuleExtension") {
+            de("zfc.RuleExtension") {//any[x] ((x belongTo A) equivTo (x belongTo B)) <=> A equalTo B
                 A equalTo B
             }
             yield() {
@@ -72,7 +76,7 @@ object Samples {
             }
         }
         showObtained()
-        assume(g) {
+        assume(g) {// opposite direction
             de("zfc.RuleExtension") {
                 forAny(x) {
                     (x belongTo A) equivTo (x belongTo B)

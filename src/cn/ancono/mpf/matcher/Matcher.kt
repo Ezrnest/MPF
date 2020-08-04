@@ -9,6 +9,7 @@ interface MatchResult
 
 
 /**
+ * The general interface for matchers of tree structures.
  * Describes a matcher for a tree structure.
  * @author liyicheng
  */

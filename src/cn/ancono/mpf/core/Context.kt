@@ -27,12 +27,7 @@ class FormulaContext(
      */
     val formulas: List<Formula>
         get() = fors
-//    val constants: Set<Constant>
-//        get() = cons
-//    val functions: Set<Function>
-//        get() = funs
-//    val predicates: Set<Predicate>
-//        get() = pres
+
 
     /**
      * Contains all the regular forms of the formulas in this context and their corresponding
@@ -40,6 +35,7 @@ class FormulaContext(
      */
     val regularForms: NavigableMap<Formula, Formula>
         get() = regs
+
 
     fun copy(): FormulaContext {
         return FormulaContext(formulas, regularForms)
@@ -67,9 +63,6 @@ class FormulaContext(
     companion object {
         operator fun invoke(
             formulas: List<Formula>
-//            constants: Set<Constant> = emptySet(),
-//            functions: Set<Function> = emptySet(),
-//            predicates: Set<Predicate> = emptySet()
         ): FormulaContext {
             val regularForms = TreeMap<Formula, Formula>(FormulaComparator)
             for (f in formulas) {
@@ -84,6 +77,9 @@ class FormulaContext(
     }
 }
 
+/**
+ * Class `Context` describes a
+ */
 open class Context(
     val structure: MutableStructure,
     val formulaContext: FormulaContext = FormulaContext.EMPTY_CONTEXT,

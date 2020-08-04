@@ -12,7 +12,14 @@ import cn.ancono.mpf.structure.ZFCFormulaScope
 import cn.ancono.mpf.structure.ZFCTermScope
 
 
-/*
+/**
+ * MpfKt provides a DSL based on Kotlin to write
+ * proofs with MPF.
+ *
+ *
+ *
+ * See the part of samples for some code samples.
+ *
  * Created by liyicheng at 2020-06-10 20:17
  */
 object MpfKt {

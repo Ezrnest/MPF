@@ -102,7 +102,7 @@ open class MatcherRule(
             val replaced = applyOne(f)
             for (r in replaced) {
                 val re = Deduction(this, desiredResult, listOf(f))
-                if (r.isIdentityTo(desiredResult)) {
+                if (r.isIdenticalTo(desiredResult)) {
                     return Reached(re)
                 }
                 allResults.add(re)
@@ -116,7 +116,7 @@ open class MatcherRule(
         val results = ArrayList<Formula>(replace1.size + 1)
         results.addAll(replace1)
         val r = matcher.replaceAll(f, replacer)
-        if (!f.isIdentityTo(r) && results.all { !it.isIdentityTo(r) }) {
+        if (!f.isIdenticalTo(r) && results.all { !it.isIdenticalTo(r) }) {
             results.add(r)
         }
         return results
@@ -146,14 +146,14 @@ open class MatcherEquivRule(
 
         fun replaceAndAdd(m: FormulaMatcher, r: RefFormulaScope.() -> Formula) {
             for (t in m.replaceOne(f, r)) {
-                if (re.all { !it.isIdentityTo(t) }) {
+                if (re.all { !it.isIdenticalTo(t) }) {
                     re.add(t)
                 }
             }
             val t = m.replaceAll(f, r)
 
-            if (!t.isIdentityTo(f)) {
-                if (re.all { !it.isIdentityTo(t) }) {
+            if (!t.isIdenticalTo(f)) {
+                if (re.all { !it.isIdenticalTo(t) }) {
                     re.add(t)
                 }
                 // found

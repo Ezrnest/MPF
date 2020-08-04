@@ -259,7 +259,7 @@ class SimpleRefFormulaMatcher(val name: String) : FormulaMatcher, AtomicMatcher<
         return if (required == null) {
             listOf(FormulaResult(formulaMap + (name to RefFormula(x)), varMap))
         } else {
-            if (x.isIdentityTo(required.formula)) {
+            if (x.isIdenticalTo(required.formula)) {
                 listOf(FormulaResult(formulaMap, varMap))
             } else {
                 emptyList()
@@ -333,7 +333,7 @@ class VarRefFormulaMatcher(
                 val f = required.build(varNames.map {
                     current[it]!!
                 })
-                if (x.isIdentityTo(f)) {
+                if (x.isIdenticalTo(f)) {
                     val nVarMap = hashMapOf<String, RefTerm>()
                     nVarMap.putAll(varMap)
                     for (en in current) {
@@ -526,18 +526,18 @@ class EquivalentFormulaMatcher(sub1: FormulaMatcher, sub2: FormulaMatcher) :
     ), FormulaMatcher
 
 /**
- * Creates a qualified formula matcher. The matcher will not store the qualified variable (named as
+ * Creates a quantifier formula matcher. The matcher will not store the qualified variable (named as
  * [varName]) in the matching result.
  */
-open class QualifiedFormulaMatcher(
-    val type: Class<out QualifiedFormula>,
+open class QuantifierFormulaMatcher(
+    val type: Class<out QuantifierFormula>,
     val varName: String,
     val sub: FormulaMatcher
 ) :
     FormulaMatcher {
 
     override fun match(x: Formula, previousResult: FormulaResult?): List<FormulaResult> {
-        if (x !is QualifiedFormula || !type.isInstance(x)) {
+        if (x !is QuantifierFormula || !type.isInstance(x)) {
             return emptyList()
         }
         val variable = x.v
@@ -560,10 +560,10 @@ open class QualifiedFormulaMatcher(
 }
 
 class ExistFormulaMatcher(varName: String, sub: FormulaMatcher) :
-    QualifiedFormulaMatcher(ExistFormula::class.java, varName, sub), FormulaMatcher
+    QuantifierFormulaMatcher(ExistFormula::class.java, varName, sub), FormulaMatcher
 
 class ForAnyFormulaMatcher(varName: String, sub: FormulaMatcher) :
-    QualifiedFormulaMatcher(ForAnyFormula::class.java, varName, sub), FormulaMatcher
+    QuantifierFormulaMatcher(ForAnyFormula::class.java, varName, sub), FormulaMatcher
 
 class AndFormulaMatcher(override val children: List<FormulaMatcher>, override val fallback: FormulaMatcher) :
     UnorderedMatcher<Formula, FormulaResult>(

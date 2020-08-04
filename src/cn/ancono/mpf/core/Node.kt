@@ -13,6 +13,8 @@ interface Node<T : Node<T>> {
         get() = children.size
     val children: List<T>
 
+
+
     /**
      * Applies the function recursively to each node in this node. The order of
      * iteration is pre-order. The function may return `true` to indicate that the iterating process
@@ -31,6 +33,25 @@ interface Node<T : Node<T>> {
             it.recurApply(f)
         }
     }
+
+    /**
+     * Recursively maps the tree of nodes to a new one. The children will be recursively mapped first and the
+     * resulting children will be used to construct a new node, which will be passed to [f].
+     *
+     * The following code shows the logic of this function:
+     *
+     *     fun recurMap(f : (T) -> T) :T{
+     *         val mappedChildren = children.map { c -> c.recurMap(f)}
+     *         val mapped = this.copyOf(mappedChildren)
+     *         return f(mapped)
+     *     }
+     *
+     * @return a recursively mapped new node as the result
+     * @param f the mapping function, it should only focus on the given node.
+     */
+    fun recurMap(f : (T) -> T) :T
+
+
 }
 
 interface AtomicNode<T : Node<T>> : Node<T> {
